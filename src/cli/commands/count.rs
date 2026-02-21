@@ -128,7 +128,7 @@ fn render_count_simple_rich(total: usize, ctx: &OutputContext) {
         .title(Text::styled("Issue Count", theme.panel_title.clone()))
         .box_style(theme.box_style);
 
-    console.print_renderable(&panel);
+    ctx.render(&panel);
 }
 
 /// Render grouped count with rich formatting.
@@ -170,7 +170,7 @@ fn render_count_grouped_rich(
         .title(Text::styled(title, theme.panel_title.clone()))
         .box_style(theme.box_style);
 
-    console.print_renderable(&panel);
+    ctx.render(&panel);
 }
 
 fn parse_statuses(values: &[String]) -> Result<Vec<Status>> {

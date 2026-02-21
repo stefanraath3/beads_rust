@@ -514,7 +514,7 @@ fn render_audit_log_rich(issue_id: &str, events: &[crate::model::Event], ctx: &O
         ))
         .box_style(theme.box_style);
 
-    console.print_renderable(&panel);
+    ctx.render(&panel);
 }
 
 fn render_audit_log_plain(issue_id: &str, events: &[crate::model::Event]) {
@@ -595,7 +595,7 @@ fn render_audit_summary_rich(
         ))
         .box_style(theme.box_style);
 
-    console.print_renderable(&panel);
+    ctx.render(&panel);
 }
 
 fn render_audit_summary_plain(days: u32, totals: &AuditTotals, actors: &[ActorSummary]) {

@@ -61,6 +61,16 @@ pub fn execute(args: QuickArgs, cli: &config::CliOverrides, ctx: &OutputContext)
         storage.id_exists(candidate).unwrap_or(false)
     });
 
+    let mut valid_labels = Vec::new();
+    let labels = split_labels(&args.labels);
+    for label in labels {
+        if let Err(err) = LabelValidator::validate(&label) {
+            eprintln!("Warning: invalid label '{label}': {}", err.message);
+            continue;
+        }
+        valid_labels.push(label);
+    }
+
     let mut issue = Issue {
         id,
         title,
@@ -98,7 +108,7 @@ pub fn execute(args: QuickArgs, cli: &config::CliOverrides, ctx: &OutputContext)
         ephemeral: false,
         pinned: false,
         is_template: false,
-        labels: vec![],
+        labels: valid_labels,
         dependencies: vec![],
         comments: vec![],
     };
@@ -111,18 +121,6 @@ pub fn execute(args: QuickArgs, cli: &config::CliOverrides, ctx: &OutputContext)
     issue.content_hash = Some(issue.compute_content_hash());
 
     storage.create_issue(&issue, &actor)?;
-
-    let labels = split_labels(&args.labels);
-    for label in labels {
-        if let Err(err) = LabelValidator::validate(&label) {
-            eprintln!("Warning: invalid label '{label}': {}", err.message);
-            continue;
-        }
-
-        if let Err(err) = storage.add_label(&issue.id, &label, &actor) {
-            eprintln!("Warning: failed to add label '{label}': {err}");
-        }
-    }
 
     // Output
     if ctx.is_json() {

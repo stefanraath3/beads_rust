@@ -457,7 +457,7 @@ fn render_status_rich(status: &SyncStatus, ctx: &OutputContext) {
     let panel = Panel::from_rich_text(&text, ctx.width())
         .title(Text::new("Sync Status"))
         .box_style(theme.box_style);
-    console.print_renderable(&panel);
+    ctx.render(&panel);
 }
 
 /// Execute the --flush-only (export) operation.
@@ -771,11 +771,11 @@ fn render_flush_result_rich(result: &FlushResult, errors: &[ExportError], ctx: &
     let panel = Panel::from_rich_text(&text, ctx.width())
         .title(Text::new("Flush (Export)"))
         .box_style(theme.box_style);
-    console.print_renderable(&panel);
+    ctx.render(&panel);
 
     // Errors section if any
     if !errors.is_empty() {
-        console.print("");
+        ctx.newline();
         render_errors_rich(errors, ctx);
     }
 }
@@ -806,7 +806,7 @@ fn render_errors_rich(errors: &[ExportError], ctx: &OutputContext) {
     let panel = Panel::from_rich_text(&text, ctx.width())
         .title(Text::new("⚠ Errors"))
         .box_style(theme.box_style);
-    console.print_renderable(&panel);
+    ctx.render(&panel);
 }
 
 fn parse_export_policy(args: &SyncArgs) -> Result<ExportErrorPolicy> {
@@ -1041,7 +1041,7 @@ fn render_import_result_rich(result: &ImportResultOutput, ctx: &OutputContext) {
     let panel = Panel::from_rich_text(&text, ctx.width())
         .title(Text::new("Import"))
         .box_style(theme.box_style);
-    console.print_renderable(&panel);
+    ctx.render(&panel);
 }
 
 /// Detect the issue ID prefix from the first non-tombstone issue in a JSONL file.

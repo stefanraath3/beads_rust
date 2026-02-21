@@ -230,7 +230,7 @@ fn render_changelog_rich(output: &ChangelogOutput, ctx: &OutputContext) {
         .title(Text::styled("Changelog", theme.panel_title.clone()))
         .box_style(theme.box_style);
 
-    console.print_renderable(&panel);
+    ctx.render(&panel);
 }
 
 /// Format the date range header.

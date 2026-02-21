@@ -99,7 +99,6 @@ fn render_stale_rich(
     use rich_rust::Text;
     use rich_rust::prelude::*;
 
-    let console = Console::default();
     let theme = ctx.theme();
 
     if stale.is_empty() {
@@ -109,7 +108,7 @@ fn render_stale_rich(
             &format!("No stale issues (threshold: {}+ days)", threshold_days),
             theme.success.clone().bold(),
         );
-        console.print_renderable(&text);
+        ctx.render(&text);
         return;
     }
 
@@ -121,8 +120,8 @@ fn render_stale_rich(
         &format!(" ({} not updated in {}+ days)", stale.len(), threshold_days),
         theme.dimmed.clone(),
     );
-    console.print_renderable(&header);
-    console.print("");
+    ctx.render(&header);
+    ctx.newline();
 
     for issue in stale {
         let days_stale = (now - issue.updated_at).num_days().max(0);
@@ -163,7 +162,7 @@ fn render_stale_rich(
             line.append_styled(&format!(" (@{})", assignee), theme.dimmed.clone());
         }
 
-        console.print_renderable(&line);
+        ctx.render(&line);
     }
 }
 
