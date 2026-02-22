@@ -52,6 +52,10 @@ claude-upgrade-progress.json
 # Shell command artifacts (from malformed redirects like `> =`)
 =
 
+# Local scratch SQLite DBs (never tracked)
+storage.sqlite3
+storage.sqlite3-*
+
 # Local Cargo and Rustup caches (agent workspace artifacts)
 .cargo/
 .rustup/
