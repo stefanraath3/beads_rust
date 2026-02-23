@@ -492,9 +492,44 @@ fn execute_dry_run_inferred(
 #[allow(clippy::unnecessary_wraps)]
 fn execute_json(
     detection: &AgentFileDetection,
-    _args: &AgentsArgs,
+    args: &AgentsArgs,
     ctx: &OutputContext,
 ) -> Result<()> {
+    if args.dry_run {
+        let would_action = if !detection.found() {
+            "create"
+        } else if detection.needs_upgrade() {
+            "update"
+        } else if detection.needs_blurb() {
+            "add"
+        } else {
+            "none"
+        };
+
+        let work_dir = std::env::current_dir().unwrap_or_default();
+        let target_path = if detection.found() {
+            detection.file_path.clone()
+        } else {
+            Some(get_preferred_agent_file_path(&work_dir))
+        };
+
+        let output = serde_json::json!({
+            "dry_run": true,
+            "found": detection.found(),
+            "file_path": target_path,
+            "file_type": detection.file_type,
+            "has_blurb": detection.has_blurb,
+            "has_legacy_blurb": detection.has_legacy_blurb,
+            "blurb_version": detection.blurb_version,
+            "current_version": BLURB_VERSION,
+            "needs_blurb": detection.needs_blurb(),
+            "needs_upgrade": detection.needs_upgrade(),
+            "would_action": would_action,
+        });
+        ctx.json_pretty(&output);
+        return Ok(());
+    }
+
     let output = serde_json::json!({
         "found": detection.found(),
         "file_path": detection.file_path,

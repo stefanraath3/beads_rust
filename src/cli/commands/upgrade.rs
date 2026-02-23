@@ -246,6 +246,7 @@ fn resolve_auth_token() -> Option<String> {
     env::var("GITHUB_TOKEN")
         .or_else(|_| env::var("GH_TOKEN"))
         .ok()
+        .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
 }
 
