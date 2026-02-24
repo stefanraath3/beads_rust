@@ -112,6 +112,28 @@ opt-level = 1
 default = ["self_update"]
 self_update = ["dep:self_update"]
 
+# Override crates.io fsqlite with GitHub HEAD to pick up uring-fs removal
+# (pure-Rust UnixVfs replaces IoUringVfs, eliminating glibc 2.39 requirement)
+[patch.crates-io]
+fsqlite          = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite" }
+fsqlite-ast      = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-ast" }
+fsqlite-btree    = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-btree" }
+fsqlite-core     = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-core" }
+fsqlite-error    = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-error" }
+fsqlite-ext-fts5 = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-ext-fts5" }
+fsqlite-ext-json = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-ext-json" }
+fsqlite-ext-rtree = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-ext-rtree" }
+fsqlite-func     = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-func" }
+fsqlite-mvcc     = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-mvcc" }
+fsqlite-observability = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-observability" }
+fsqlite-pager    = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-pager" }
+fsqlite-parser   = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-parser" }
+fsqlite-planner  = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-planner" }
+fsqlite-types    = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-types" }
+fsqlite-vdbe     = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-vdbe" }
+fsqlite-vfs      = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-vfs" }
+fsqlite-wal      = { git = "https://github.com/Dicklesworthstone/frankensqlite", branch = "main", package = "fsqlite-wal" }
+
 [lints.rust]
 unsafe_code = "forbid"
 

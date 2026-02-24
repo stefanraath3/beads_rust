@@ -57,18 +57,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux x64 (musl, statically linked — no glibc dependency)
-          - target: x86_64-unknown-linux-musl
+          # Linux x64 (gnu) — pure-Rust UnixVfs eliminates glibc 2.39 requirement
+          - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
             name: linux_amd64
-            musl: true
-          # Linux ARM64 (musl, statically linked)
-          - target: aarch64-unknown-linux-musl
+          # Linux ARM64 (gnu)
+          - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
             archive: tar.gz
             name: linux_arm64
-            musl: true
           # macOS Intel
           - target: x86_64-apple-darwin
             os: macos-15
@@ -99,13 +97,6 @@ jobs:
       - name: Ensure target is installed
         run: rustup target add ${{ matrix.target }}
 
-      - name: Install musl tools (Linux musl)
-        if: matrix.musl
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
-          rustup target add ${{ matrix.target }}
-
       - name: Cache cargo
         uses: Swatinem/rust-cache@ad397744b0d591a723ab90405b7247fac0e6b8db  # v2
         with:
@@ -117,12 +108,8 @@ jobs:
           VERGEN_GIT_SHA: ${{ github.sha }}
           VERGEN_GIT_BRANCH: ${{ github.ref_name }}
 
-      - name: Verify binary runs (Unix, native)
-        if: runner.os != 'Windows' && !matrix.musl
-        run: ./target/${{ matrix.target }}/release/br --version
-
-      - name: Verify musl binary runs (Linux musl)
-        if: matrix.musl
+      - name: Verify binary runs (Unix)
+        if: runner.os != 'Windows'
         run: ./target/${{ matrix.target }}/release/br --version
 
       - name: Verify binary runs (Windows)
