@@ -111,10 +111,10 @@ pub fn get_last_touched_id(beads_dir: &Path) -> String {
     let path = last_touched_path(beads_dir);
     let mut contents = String::new();
 
-    if let Ok(mut file) = fs::File::open(path) {
-        if file.read_to_string(&mut contents).is_ok() {
-            return contents.lines().next().unwrap_or("").trim().to_string();
-        }
+    if let Ok(mut file) = fs::File::open(path)
+        && file.read_to_string(&mut contents).is_ok()
+    {
+        return contents.lines().next().unwrap_or("").trim().to_string();
     }
 
     String::new()

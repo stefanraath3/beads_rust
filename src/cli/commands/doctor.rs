@@ -145,15 +145,14 @@ fn render_doctor_rich(report: &DoctorReport, ctx: &OutputContext) {
         }
         content.append("\n");
 
-        if !matches!(check.status, CheckStatus::Ok) {
-            if let Some(details) = &check.details {
-                if let Ok(details_text) = serde_json::to_string_pretty(details) {
-                    for line in details_text.lines() {
-                        content.append_styled("    ", theme.dimmed.clone());
-                        content.append_styled(line, theme.dimmed.clone());
-                        content.append("\n");
-                    }
-                }
+        if !matches!(check.status, CheckStatus::Ok)
+            && let Some(details) = &check.details
+            && let Ok(details_text) = serde_json::to_string_pretty(details)
+        {
+            for line in details_text.lines() {
+                content.append_styled("    ", theme.dimmed.clone());
+                content.append_styled(line, theme.dimmed.clone());
+                content.append("\n");
             }
         }
     }
@@ -177,6 +176,7 @@ fn collect_table_columns(conn: &Connection, table: &str) -> Result<Vec<String>> 
     Ok(columns)
 }
 
+#[allow(clippy::too_many_lines)]
 fn required_schema_checks(conn: &Connection, checks: &mut Vec<CheckResult>) -> Result<()> {
     let rows = conn
         .query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")?;

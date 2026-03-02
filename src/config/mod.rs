@@ -204,12 +204,12 @@ fn discover_beads_dir_with_env(
         if path.is_dir() {
             return routing::follow_redirects(path, 10);
         }
-    } else if let Ok(value) = env::var("BEADS_DIR") {
-        if !value.trim().is_empty() {
-            let path = PathBuf::from(value);
-            if path.is_dir() {
-                return routing::follow_redirects(&path, 10);
-            }
+    } else if let Ok(value) = env::var("BEADS_DIR")
+        && !value.trim().is_empty()
+    {
+        let path = PathBuf::from(value);
+        if path.is_dir() {
+            return routing::follow_redirects(&path, 10);
         }
     }
 
@@ -521,10 +521,10 @@ fn resolve_jsonl_path(
     db_override: Option<&PathBuf>,
 ) -> PathBuf {
     // Priority 1: BEADS_JSONL environment variable (highest priority)
-    if let Ok(env_path) = env::var("BEADS_JSONL") {
-        if !env_path.trim().is_empty() {
-            return PathBuf::from(env_path);
-        }
+    if let Ok(env_path) = env::var("BEADS_JSONL")
+        && !env_path.trim().is_empty()
+    {
+        return PathBuf::from(env_path);
     }
 
     // Priority 2: DB override derives sibling JSONL path
@@ -626,10 +626,10 @@ impl ConfigLayer {
         if let Ok(value) = env::var("BEADS_REMOTE_SYNC_INTERVAL") {
             insert_key_value(&mut layer, "remote-sync-interval", value);
         }
-        if let Ok(value) = env::var("BEADS_AUTO_START_DAEMON") {
-            if let Some(enabled) = parse_bool(&value) {
-                insert_key_value(&mut layer, "no-daemon", (!enabled).to_string());
-            }
+        if let Ok(value) = env::var("BEADS_AUTO_START_DAEMON")
+            && let Some(enabled) = parse_bool(&value)
+        {
+            insert_key_value(&mut layer, "no-daemon", (!enabled).to_string());
         }
 
         layer

@@ -138,10 +138,10 @@ impl PathValidation {
 pub fn validate_no_git_path(path: &Path) -> PathValidation {
     fn has_git_component(candidate: &Path) -> bool {
         for component in candidate.components() {
-            if let std::path::Component::Normal(name) = component {
-                if name == ".git" {
-                    return true;
-                }
+            if let std::path::Component::Normal(name) = component
+                && name == ".git"
+            {
+                return true;
             }
         }
 
@@ -164,14 +164,13 @@ pub fn validate_no_git_path(path: &Path) -> PathValidation {
         if has_git_component(&canonical) {
             return PathValidation::GitPathAttempt { path: canonical };
         }
-    } else if let Some(parent) = path.parent() {
-        if let Ok(canonical_parent) = dunce::canonicalize(parent) {
-            if has_git_component(&canonical_parent) {
-                return PathValidation::GitPathAttempt {
-                    path: canonical_parent,
-                };
-            }
-        }
+    } else if let Some(parent) = path.parent()
+        && let Ok(canonical_parent) = dunce::canonicalize(parent)
+        && has_git_component(&canonical_parent)
+    {
+        return PathValidation::GitPathAttempt {
+            path: canonical_parent,
+        };
     }
 
     PathValidation::Allowed
@@ -295,21 +294,21 @@ pub fn validate_sync_path(path: &Path, beads_dir: &Path) -> PathValidation {
     };
 
     // Check if the path is a symlink pointing outside beads_dir
-    if path.is_symlink() {
-        if let Ok(target) = std::fs::read_link(path) {
-            let canonical_target = dunce::canonicalize(&target).unwrap_or_else(|_| target.clone());
-            if !canonical_target.starts_with(&canonical_beads) {
-                let result = PathValidation::SymlinkEscape {
-                    path: path.to_path_buf(),
-                    target: canonical_target,
-                };
-                warn!(
-                    path = %path.display(),
-                    target = %target.display(),
-                    "Symlink escape detected"
-                );
-                return result;
-            }
+    if path.is_symlink()
+        && let Ok(target) = std::fs::read_link(path)
+    {
+        let canonical_target = dunce::canonicalize(&target).unwrap_or_else(|_| target.clone());
+        if !canonical_target.starts_with(&canonical_beads) {
+            let result = PathValidation::SymlinkEscape {
+                path: path.to_path_buf(),
+                target: canonical_target,
+            };
+            warn!(
+                path = %path.display(),
+                target = %target.display(),
+                "Symlink escape detected"
+            );
+            return result;
         }
     }
 

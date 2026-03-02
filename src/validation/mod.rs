@@ -58,10 +58,10 @@ impl IssueValidator {
         }
 
         // Description: Optional, max 100KB.
-        if let Some(description) = issue.description.as_ref() {
-            if description.len() > 102_400 {
-                errors.push(ValidationError::new("description", "exceeds 100KB"));
-            }
+        if let Some(description) = issue.description.as_ref()
+            && description.len() > 102_400
+        {
+            errors.push(ValidationError::new("description", "exceeds 100KB"));
         }
 
         // Priority: 0-4 range.
@@ -327,13 +327,13 @@ impl SyncSafetyValidator {
     pub fn validate_no_git_path(path: &Path) -> Result<(), ValidationError> {
         // Check each component of the path for .git
         for component in path.components() {
-            if let std::path::Component::Normal(name) = component {
-                if name == ".git" {
-                    return Err(ValidationError::new(
-                        "path",
-                        "sync operations cannot access .git directory (safety invariant)",
-                    ));
-                }
+            if let std::path::Component::Normal(name) = component
+                && name == ".git"
+            {
+                return Err(ValidationError::new(
+                    "path",
+                    "sync operations cannot access .git directory (safety invariant)",
+                ));
             }
         }
 

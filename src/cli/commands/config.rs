@@ -283,10 +283,10 @@ fn show_paths(_json_mode: bool, ctx: &OutputContext) -> Result<()> {
             println!("User config: (none)");
         }
 
-        if let Some(path) = legacy_user_path {
-            if path.exists() {
-                println!("Legacy user config: {} (found)", path.display());
-            }
+        if let Some(path) = legacy_user_path
+            && path.exists()
+        {
+            println!("Legacy user config: {} (found)", path.display());
         }
 
         if let Some(path) = project_path {
@@ -617,17 +617,17 @@ fn delete_config_value(
 
     // 3. Delete from User YAML
     let mut user_deleted = false;
-    if let Some(config_path) = get_user_config_path() {
-        if config_path.exists() {
-            let contents = fs::read_to_string(&config_path)?;
-            let mut config: serde_yml::Value = serde_yml::from_str(&contents)
-                .unwrap_or(serde_yml::Value::Mapping(serde_yml::Mapping::default()));
+    if let Some(config_path) = get_user_config_path()
+        && config_path.exists()
+    {
+        let contents = fs::read_to_string(&config_path)?;
+        let mut config: serde_yml::Value = serde_yml::from_str(&contents)
+            .unwrap_or(serde_yml::Value::Mapping(serde_yml::Mapping::default()));
 
-            if delete_from_yaml(&mut config, key) {
-                let yaml_str = serde_yml::to_string(&config)?;
-                fs::write(&config_path, yaml_str)?;
-                user_deleted = true;
-            }
+        if delete_from_yaml(&mut config, key) {
+            let yaml_str = serde_yml::to_string(&config)?;
+            fs::write(&config_path, yaml_str)?;
+            user_deleted = true;
         }
     }
 

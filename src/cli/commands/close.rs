@@ -276,14 +276,14 @@ pub fn execute_with_args(
 
         let mut unblocked = Vec::new();
         for uid in newly_unblocked {
-            if let Some(issue) = storage.get_issue(&uid)? {
-                if issue.status.is_active() {
-                    unblocked.push(UnblockedIssue {
-                        id: issue.id,
-                        title: issue.title,
-                        priority: issue.priority.0,
-                    });
-                }
+            if let Some(issue) = storage.get_issue(&uid)?
+                && issue.status.is_active()
+            {
+                unblocked.push(UnblockedIssue {
+                    id: issue.id,
+                    title: issue.title,
+                    priority: issue.priority.0,
+                });
             }
         }
         unblocked

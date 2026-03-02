@@ -130,7 +130,7 @@ impl RunStats {
         let sum: u128 = durations.iter().sum();
         let mean = sum as f64 / count as f64;
 
-        let median = if count % 2 == 0 {
+        let median = if count.is_multiple_of(2) {
             (durations[count / 2 - 1] + durations[count / 2]) as f64 / 2.0
         } else {
             durations[count / 2] as f64

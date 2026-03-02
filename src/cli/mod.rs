@@ -292,10 +292,10 @@ fn build_config_index() -> CompletionConfigIndex {
             }
             if let Ok(map) = storage_ctx.storage.get_all_config() {
                 for key in map.keys() {
-                    if let Some(name) = key.strip_prefix(SAVED_QUERY_PREFIX) {
-                        if !name.trim().is_empty() {
-                            saved_queries.insert(name.to_string());
-                        }
+                    if let Some(name) = key.strip_prefix(SAVED_QUERY_PREFIX)
+                        && !name.trim().is_empty()
+                    {
+                        saved_queries.insert(name.to_string());
                     }
                 }
             }
@@ -1220,15 +1220,15 @@ impl OutputFormat {
     /// Precedence: BR_OUTPUT_FORMAT > TOON_DEFAULT_FORMAT.
     #[must_use]
     pub fn from_env() -> Option<Self> {
-        if let Ok(value) = std::env::var("BR_OUTPUT_FORMAT") {
-            if let Some(format) = Self::parse_env_value(&value) {
-                return Some(format);
-            }
+        if let Ok(value) = std::env::var("BR_OUTPUT_FORMAT")
+            && let Some(format) = Self::parse_env_value(&value)
+        {
+            return Some(format);
         }
-        if let Ok(value) = std::env::var("TOON_DEFAULT_FORMAT") {
-            if let Some(format) = Self::parse_env_value(&value) {
-                return Some(format);
-            }
+        if let Ok(value) = std::env::var("TOON_DEFAULT_FORMAT")
+            && let Some(format) = Self::parse_env_value(&value)
+        {
+            return Some(format);
         }
         None
     }

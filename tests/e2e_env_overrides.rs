@@ -437,13 +437,13 @@ fn e2e_actor_flag_overrides_env() {
     let payload = extract_json_payload(&show.stdout);
     let show_json: Vec<Value> = serde_json::from_str(&payload).expect("show json");
 
-    if let Some(comments) = show_json[0]["comments"].as_array() {
-        if let Some(comment) = comments.first() {
-            assert_eq!(
-                comment["author"], "flag-author",
-                "CLI --author flag should override BD_ACTOR env"
-            );
-        }
+    if let Some(comments) = show_json[0]["comments"].as_array()
+        && let Some(comment) = comments.first()
+    {
+        assert_eq!(
+            comment["author"], "flag-author",
+            "CLI --author flag should override BD_ACTOR env"
+        );
     }
 }
 

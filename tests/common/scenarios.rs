@@ -188,41 +188,41 @@ impl NormalizationRules {
                     };
 
                     if self.mask_fields.contains(key) {
-                        if let Some(s) = val.as_str() {
-                            if !s.is_empty() && self.log_normalization {
-                                log.push(format!("Masked timestamp: {field_path}"));
-                            }
+                        if let Some(s) = val.as_str()
+                            && !s.is_empty()
+                            && self.log_normalization
+                        {
+                            log.push(format!("Masked timestamp: {field_path}"));
                         }
                         *val = Value::String("NORMALIZED_TIMESTAMP".to_string());
                     } else if self.normalize_ids && (key == "id" || key.ends_with("_id")) {
-                        if let Some(s) = val.as_str() {
-                            if let Some(dash_pos) = s.rfind('-') {
-                                let prefix = &s[..dash_pos];
-                                *val = Value::String(format!("{prefix}-HASH"));
-                                if self.log_normalization {
-                                    log.push(format!("Normalized ID: {field_path}"));
-                                }
+                        if let Some(s) = val.as_str()
+                            && let Some(dash_pos) = s.rfind('-')
+                        {
+                            let prefix = &s[..dash_pos];
+                            *val = Value::String(format!("{prefix}-HASH"));
+                            if self.log_normalization {
+                                log.push(format!("Normalized ID: {field_path}"));
                             }
                         }
                     } else if self.normalize_paths && self.path_fields.contains(key) {
                         // Normalize path separators (Windows backslash to Unix forward slash)
-                        if let Some(s) = val.as_str() {
-                            if s.contains('\\') {
-                                let normalized = s.replace('\\', "/");
-                                if self.log_normalization {
-                                    log.push(format!("Normalized path: {field_path}"));
-                                }
-                                *val = Value::String(normalized);
+                        if let Some(s) = val.as_str()
+                            && s.contains('\\')
+                        {
+                            let normalized = s.replace('\\', "/");
+                            if self.log_normalization {
+                                log.push(format!("Normalized path: {field_path}"));
                             }
+                            *val = Value::String(normalized);
                         }
                         // Also apply line ending normalization if enabled
-                        if self.normalize_line_endings {
-                            if let Some(s) = val.as_str() {
-                                if s.contains("\r\n") {
-                                    let normalized = s.replace("\r\n", "\n");
-                                    *val = Value::String(normalized);
-                                }
-                            }
+                        if self.normalize_line_endings
+                            && let Some(s) = val.as_str()
+                            && s.contains("\r\n")
+                        {
+                            let normalized = s.replace("\r\n", "\n");
+                            *val = Value::String(normalized);
                         }
                     } else {
                         self.normalize_value(val, &field_path, log);
@@ -550,10 +550,10 @@ pub fn measure_peak_rss(pid: u32) -> Option<u64> {
         // VmHWM is the peak RSS (high water mark)
         if line.starts_with("VmHWM:") {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                if let Ok(kb) = parts[1].parse::<u64>() {
-                    return Some(kb * 1024); // Convert KB to bytes
-                }
+            if parts.len() >= 2
+                && let Ok(kb) = parts[1].parse::<u64>()
+            {
+                return Some(kb * 1024); // Convert KB to bytes
             }
         }
     }
@@ -605,7 +605,7 @@ pub fn compute_statistics(durations: &[u128], rss_values: &[Option<u64>]) -> Run
 
     let min_ms = sorted[0];
     let max_ms = sorted[n - 1];
-    let median_ms = if n % 2 == 0 {
+    let median_ms = if n.is_multiple_of(2) {
         u128::midpoint(sorted[n / 2 - 1], sorted[n / 2])
     } else {
         sorted[n / 2]
@@ -641,7 +641,7 @@ pub fn compute_statistics(durations: &[u128], rss_values: &[Option<u64>]) -> Run
         } else {
             rss_vals.sort_unstable();
             let rn = rss_vals.len();
-            Some(if rn % 2 == 0 {
+            Some(if rn.is_multiple_of(2) {
                 u64::midpoint(rss_vals[rn / 2 - 1], rss_vals[rn / 2])
             } else {
                 rss_vals[rn / 2]
@@ -783,13 +783,13 @@ impl BenchmarkRunner {
             &format!("{}_{}", scenario.name, iteration),
         );
 
-        if let ScenarioSetup::Dataset(dataset) = scenario.setup {
-            if let Err(err) = populate_conformance_with_dataset(&workspace, dataset) {
-                notes.push(format!(
-                    "Dataset setup failed for iteration {iteration}: {err}"
-                ));
-                return None;
-            }
+        if let ScenarioSetup::Dataset(dataset) = scenario.setup
+            && let Err(err) = populate_conformance_with_dataset(&workspace, dataset)
+        {
+            notes.push(format!(
+                "Dataset setup failed for iteration {iteration}: {err}"
+            ));
+            return None;
         }
 
         if matches!(scenario.setup, ScenarioSetup::Fresh) {
@@ -866,13 +866,13 @@ impl BenchmarkRunner {
         let mut workspace =
             TestWorkspace::new("benchmark", &format!("{}_{}", scenario.name, iteration));
 
-        if let ScenarioSetup::Dataset(dataset) = scenario.setup {
-            if let Err(err) = populate_workspace_with_dataset(&workspace, dataset) {
-                notes.push(format!(
-                    "Dataset setup failed for iteration {iteration}: {err}"
-                ));
-                return None;
-            }
+        if let ScenarioSetup::Dataset(dataset) = scenario.setup
+            && let Err(err) = populate_workspace_with_dataset(&workspace, dataset)
+        {
+            notes.push(format!(
+                "Dataset setup failed for iteration {iteration}: {err}"
+            ));
+            return None;
         }
 
         if matches!(scenario.setup, ScenarioSetup::Fresh) {
@@ -1386,19 +1386,19 @@ impl ScenarioRunner {
     fn run_e2e(&self, scenario: &Scenario) -> ScenarioResult {
         let mut workspace = TestWorkspace::new("e2e", &scenario.name);
 
-        if let ScenarioSetup::Dataset(dataset) = scenario.setup {
-            if let Err(err) = populate_workspace_with_dataset(&workspace, dataset) {
-                return ScenarioResult {
-                    passed: false,
-                    mode: self.mode,
-                    br_result: None,
-                    bd_result: None,
-                    comparison_result: None,
-                    invariant_failures: vec![format!("Dataset setup failed: {err}")],
-                    normalization_log: Vec::new(),
-                    benchmark_metrics: None,
-                };
-            }
+        if let ScenarioSetup::Dataset(dataset) = scenario.setup
+            && let Err(err) = populate_workspace_with_dataset(&workspace, dataset)
+        {
+            return ScenarioResult {
+                passed: false,
+                mode: self.mode,
+                br_result: None,
+                bd_result: None,
+                comparison_result: None,
+                invariant_failures: vec![format!("Dataset setup failed: {err}")],
+                normalization_log: Vec::new(),
+                benchmark_metrics: None,
+            };
         }
 
         let baseline_snapshot = if scenario.invariants.path_confinement {
@@ -1487,19 +1487,19 @@ impl ScenarioRunner {
                     benchmark_metrics: None,
                 };
             }
-        } else if let ScenarioSetup::Dataset(dataset) = scenario.setup {
-            if let Err(err) = populate_conformance_with_dataset(&workspace, dataset) {
-                return ScenarioResult {
-                    passed: false,
-                    mode: self.mode,
-                    br_result: None,
-                    bd_result: None,
-                    comparison_result: None,
-                    invariant_failures: vec![format!("Dataset setup failed: {err}")],
-                    normalization_log: Vec::new(),
-                    benchmark_metrics: None,
-                };
-            }
+        } else if let ScenarioSetup::Dataset(dataset) = scenario.setup
+            && let Err(err) = populate_conformance_with_dataset(&workspace, dataset)
+        {
+            return ScenarioResult {
+                passed: false,
+                mode: self.mode,
+                br_result: None,
+                bd_result: None,
+                comparison_result: None,
+                invariant_failures: vec![format!("Dataset setup failed: {err}")],
+                normalization_log: Vec::new(),
+                benchmark_metrics: None,
+            };
         }
 
         let baseline_snapshot = if scenario.invariants.path_confinement {
@@ -1596,19 +1596,19 @@ impl ScenarioRunner {
         // For now, benchmark mode is like E2E but captures timing metrics
         let mut workspace = TestWorkspace::new("benchmark", &scenario.name);
 
-        if let ScenarioSetup::Dataset(dataset) = scenario.setup {
-            if let Err(err) = populate_workspace_with_dataset(&workspace, dataset) {
-                return ScenarioResult {
-                    passed: false,
-                    mode: self.mode,
-                    br_result: None,
-                    bd_result: None,
-                    comparison_result: None,
-                    invariant_failures: vec![format!("Dataset setup failed: {err}")],
-                    normalization_log: Vec::new(),
-                    benchmark_metrics: None,
-                };
-            }
+        if let ScenarioSetup::Dataset(dataset) = scenario.setup
+            && let Err(err) = populate_workspace_with_dataset(&workspace, dataset)
+        {
+            return ScenarioResult {
+                passed: false,
+                mode: self.mode,
+                br_result: None,
+                bd_result: None,
+                comparison_result: None,
+                invariant_failures: vec![format!("Dataset setup failed: {err}")],
+                normalization_log: Vec::new(),
+                benchmark_metrics: None,
+            };
         }
 
         if matches!(scenario.setup, ScenarioSetup::Fresh) {
@@ -1666,13 +1666,13 @@ fn check_invariants(invariants: &Invariants, result: &CommandResult) -> Vec<Stri
         failures.push("Expected failure, but command succeeded".to_string());
     }
 
-    if let Some(expected_code) = invariants.expected_exit_code {
-        if result.exit_code != expected_code {
-            failures.push(format!(
-                "Expected exit code {}, got {}",
-                expected_code, result.exit_code
-            ));
-        }
+    if let Some(expected_code) = invariants.expected_exit_code
+        && result.exit_code != expected_code
+    {
+        failures.push(format!(
+            "Expected exit code {}, got {}",
+            expected_code, result.exit_code
+        ));
     }
 
     for needle in &invariants.stdout_contains {
@@ -2277,20 +2277,17 @@ fn check_timestamp_tolerance_inner(
                 } else {
                     format!("{path}.{key}")
                 };
-                if normalization.mask_fields.contains(key) {
-                    if let (Some(br_str), Some(bd_str)) =
+                if normalization.mask_fields.contains(key)
+                    && let (Some(br_str), Some(bd_str)) =
                         (br_val.as_str(), bd_val.and_then(Value::as_str))
-                    {
-                        if let (Ok(br_dt), Ok(bd_dt)) =
-                            (parse_timestamp(br_str), parse_timestamp(bd_str))
-                        {
-                            let diff = (br_dt - bd_dt).num_seconds().unsigned_abs();
-                            if diff > tolerance.as_secs() {
-                                issues.push(format!(
-                                    "timestamp drift at {field_path}: br={br_str} bd={bd_str} diff={diff}s"
-                                ));
-                            }
-                        }
+                    && let (Ok(br_dt), Ok(bd_dt)) =
+                        (parse_timestamp(br_str), parse_timestamp(bd_str))
+                {
+                    let diff = (br_dt - bd_dt).num_seconds().unsigned_abs();
+                    if diff > tolerance.as_secs() {
+                        issues.push(format!(
+                            "timestamp drift at {field_path}: br={br_str} bd={bd_str} diff={diff}s"
+                        ));
                     }
                 }
                 if let Some(bd_val) = bd_val {

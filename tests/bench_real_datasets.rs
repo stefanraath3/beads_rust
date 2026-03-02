@@ -179,10 +179,10 @@ fn get_peak_rss_bytes() -> Option<u64> {
                 if line.starts_with("VmHWM:") {
                     // Format: "VmHWM:    123456 kB"
                     let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 2 {
-                        if let Ok(kb) = parts[1].parse::<u64>() {
-                            return Some(kb * 1024);
-                        }
+                    if parts.len() >= 2
+                        && let Ok(kb) = parts[1].parse::<u64>()
+                    {
+                        return Some(kb * 1024);
                     }
                 }
             }

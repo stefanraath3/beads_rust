@@ -312,12 +312,11 @@ fn get_first_issue_id(br_path: &Path, workspace: &Path) -> Option<String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Parse JSON array and extract first id
     for line in stdout.lines() {
-        if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(line) {
-            if let Some(first) = issues.first() {
-                if let Some(id) = first.get("id").and_then(|v| v.as_str()) {
-                    return Some(id.to_string());
-                }
-            }
+        if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(line)
+            && let Some(first) = issues.first()
+            && let Some(id) = first.get("id").and_then(|v| v.as_str())
+        {
+            return Some(id.to_string());
         }
     }
     None

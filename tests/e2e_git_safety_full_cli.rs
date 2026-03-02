@@ -224,10 +224,10 @@ fn verify_git_unchanged(
 
     // Check for modified files
     for (path, hash_before) in &before_filtered {
-        if let Some(hash_after) = after_filtered.get(path) {
-            if hash_before != hash_after {
-                check.add_violation(&format!("Modified file in .git/: {path}"));
-            }
+        if let Some(hash_after) = after_filtered.get(path)
+            && hash_before != hash_after
+        {
+            check.add_violation(&format!("Modified file in .git/: {path}"));
         }
     }
 

@@ -1136,10 +1136,10 @@ fn detect_prefix_from_jsonl(jsonl_path: &Path) -> Option<String> {
         };
 
         // Skip tombstones (deleted issues)
-        if let Some(status) = probe.status {
-            if status == "tombstone" {
-                continue;
-            }
+        if let Some(status) = probe.status
+            && status == "tombstone"
+        {
+            continue;
         }
 
         // Extract prefix (part before first hyphen)

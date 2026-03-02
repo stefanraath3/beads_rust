@@ -168,19 +168,18 @@ pub fn format_type_badge_colored(issue_type: &IssueType, use_color: bool) -> Str
 #[must_use]
 pub fn terminal_width() -> usize {
     // Try COLUMNS first
-    if let Ok(columns) = std::env::var("COLUMNS") {
-        if let Ok(value) = columns.trim().parse::<usize>() {
-            if value > 0 {
-                return value;
-            }
-        }
+    if let Ok(columns) = std::env::var("COLUMNS")
+        && let Ok(value) = columns.trim().parse::<usize>()
+        && value > 0
+    {
+        return value;
     }
 
     // Try crossterm for actual terminal size
-    if let Ok((cols, _)) = crossterm::terminal::size() {
-        if cols > 0 {
-            return cols as usize;
-        }
+    if let Ok((cols, _)) = crossterm::terminal::size()
+        && cols > 0
+    {
+        return cols as usize;
     }
 
     80

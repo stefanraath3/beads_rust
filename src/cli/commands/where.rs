@@ -71,19 +71,18 @@ fn detect_prefix(
     cli: &config::CliOverrides,
 ) -> Option<String> {
     if let Ok(storage_ctx) = config::open_storage_with_cli(beads_dir, cli) {
-        if let Ok(Some(prefix)) = storage_ctx.storage.get_config("issue_prefix") {
-            if !prefix.trim().is_empty() {
-                return Some(prefix);
-            }
+        if let Ok(Some(prefix)) = storage_ctx.storage.get_config("issue_prefix")
+            && !prefix.trim().is_empty()
+        {
+            return Some(prefix);
         }
 
-        if let Ok(ids) = storage_ctx.storage.get_all_ids() {
-            if let Some(prefix) = ids
+        if let Ok(ids) = storage_ctx.storage.get_all_ids()
+            && let Some(prefix) = ids
                 .first()
                 .and_then(|id| parse_id(id).ok().map(|parsed| parsed.prefix))
-            {
-                return Some(prefix);
-            }
+        {
+            return Some(prefix);
         }
     }
 

@@ -415,10 +415,10 @@ fn count_dependencies(path: &Path) -> std::io::Result<usize> {
 
     for line in reader.lines() {
         let line = line?;
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
-            if let Some(deps) = value.get("dependencies").and_then(|d| d.as_array()) {
-                count += deps.len();
-            }
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line)
+            && let Some(deps) = value.get("dependencies").and_then(|d| d.as_array())
+        {
+            count += deps.len();
         }
     }
 

@@ -330,18 +330,19 @@ impl ArtifactIndexer {
 
                 if self.config.include_commands {
                     // If command failed, try to get failure reason from stderr
-                    if !event.success && failure_reason.is_none() {
-                        if let Some(ref stderr_path) = event.stderr_path {
-                            let full_path = if Path::new(stderr_path).is_absolute() {
-                                PathBuf::from(stderr_path)
-                            } else {
-                                test_dir.join(stderr_path)
-                            };
-                            if let Ok(stderr) = fs::read_to_string(&full_path) {
-                                let preview: String =
-                                    stderr.lines().take(5).collect::<Vec<_>>().join("\n");
-                                failure_reason = Some(preview);
-                            }
+                    if !event.success
+                        && failure_reason.is_none()
+                        && let Some(ref stderr_path) = event.stderr_path
+                    {
+                        let full_path = if Path::new(stderr_path).is_absolute() {
+                            PathBuf::from(stderr_path)
+                        } else {
+                            test_dir.join(stderr_path)
+                        };
+                        if let Ok(stderr) = fs::read_to_string(&full_path) {
+                            let preview: String =
+                                stderr.lines().take(5).collect::<Vec<_>>().join("\n");
+                            failure_reason = Some(preview);
                         }
                     }
 
@@ -432,12 +433,12 @@ impl ArtifactIndexer {
     /// Parse a snapshot file and return (`file_count`, `total_size`)
     #[allow(clippy::unused_self)]
     fn parse_snapshot(&self, path: &Path) -> (usize, u64) {
-        if let Ok(content) = fs::read_to_string(path) {
-            if let Ok(entries) = serde_json::from_str::<Vec<FileEntry>>(&content) {
-                let file_count = entries.iter().filter(|e| !e.is_dir).count();
-                let total_size: u64 = entries.iter().map(|e| e.size).sum();
-                return (file_count, total_size);
-            }
+        if let Ok(content) = fs::read_to_string(path)
+            && let Ok(entries) = serde_json::from_str::<Vec<FileEntry>>(&content)
+        {
+            let file_count = entries.iter().filter(|e| !e.is_dir).count();
+            let total_size: u64 = entries.iter().map(|e| e.size).sum();
+            return (file_count, total_size);
         }
         (0, 0)
     }

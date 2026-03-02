@@ -30,10 +30,11 @@ fn main() {
     // Track if this command potentially mutates data (for auto-flush)
     let is_mutating = is_mutating_command(&cli.command);
 
-    if should_auto_import(&cli.command) && !cli.no_db {
-        if let Err(e) = run_auto_import(&overrides, cli.allow_stale, cli.no_auto_import) {
-            handle_error(&e, json_error_mode);
-        }
+    if should_auto_import(&cli.command)
+        && !cli.no_db
+        && let Err(e) = run_auto_import(&overrides, cli.allow_stale, cli.no_auto_import)
+    {
+        handle_error(&e, json_error_mode);
     }
 
     let result = match cli.command {

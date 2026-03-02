@@ -67,16 +67,16 @@ impl RegressionConfig {
     pub fn from_env() -> Self {
         let mut config = Self::default();
 
-        if let Ok(val) = env::var("BENCH_DURATION_THRESHOLD") {
-            if let Ok(threshold) = val.parse::<f64>() {
-                config.duration_threshold = threshold;
-            }
+        if let Ok(val) = env::var("BENCH_DURATION_THRESHOLD")
+            && let Ok(threshold) = val.parse::<f64>()
+        {
+            config.duration_threshold = threshold;
         }
 
-        if let Ok(val) = env::var("BENCH_RSS_THRESHOLD") {
-            if let Ok(threshold) = val.parse::<f64>() {
-                config.rss_threshold = threshold;
-            }
+        if let Ok(val) = env::var("BENCH_RSS_THRESHOLD")
+            && let Ok(threshold) = val.parse::<f64>()
+        {
+            config.rss_threshold = threshold;
         }
 
         if let Ok(val) = env::var("BENCH_BASELINE_FILE") {

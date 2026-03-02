@@ -153,7 +153,7 @@ impl TimingStats {
 
         let n = values.len();
         let mean = values.iter().sum::<f64>() / n as f64;
-        let median = if n % 2 == 0 {
+        let median = if n.is_multiple_of(2) {
             f64::midpoint(values[n / 2 - 1], values[n / 2])
         } else {
             values[n / 2]

@@ -247,19 +247,18 @@ impl OutputContext {
 #[must_use]
 pub fn terminal_height() -> Option<usize> {
     // Try LINES first
-    if let Ok(lines) = std::env::var("LINES") {
-        if let Ok(value) = lines.trim().parse::<usize>() {
-            if value > 0 {
-                return Some(value);
-            }
-        }
+    if let Ok(lines) = std::env::var("LINES")
+        && let Ok(value) = lines.trim().parse::<usize>()
+        && value > 0
+    {
+        return Some(value);
     }
 
     // Try crossterm for actual terminal size
-    if let Ok((_, rows)) = crossterm::terminal::size() {
-        if rows > 0 {
-            return Some(rows as usize);
-        }
+    if let Ok((_, rows)) = crossterm::terminal::size()
+        && rows > 0
+    {
+        return Some(rows as usize);
     }
 
     None

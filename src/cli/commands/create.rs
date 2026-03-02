@@ -284,13 +284,13 @@ fn validate_relations(args: &CreateArgs, id: &str) -> Result<()> {
     }
 
     // Validate Parent
-    if let Some(parent_id) = &args.parent {
-        if parent_id == id {
-            return Err(BeadsError::validation(
-                "parent",
-                "cannot be parent of itself",
-            ));
-        }
+    if let Some(parent_id) = &args.parent
+        && parent_id == id
+    {
+        return Err(BeadsError::validation(
+            "parent",
+            "cannot be parent of itself",
+        ));
     }
 
     // Validate Dependencies

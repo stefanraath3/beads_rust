@@ -50,15 +50,15 @@ pub fn execute(
     // Normalize to lowercase since ID validation requires lowercase prefixes
     let actual_prefix = prefix.unwrap_or_else(|| {
         let mut dir_name = "bd".to_string();
-        if let Ok(canon) = dunce::canonicalize(base_dir) {
-            if let Some(name) = canon.file_name().and_then(|n| n.to_str()) {
-                let cleaned: String = name
-                    .chars()
-                    .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
-                    .collect();
-                if !cleaned.is_empty() {
-                    dir_name = cleaned;
-                }
+        if let Ok(canon) = dunce::canonicalize(base_dir)
+            && let Some(name) = canon.file_name().and_then(|n| n.to_str())
+        {
+            let cleaned: String = name
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                .collect();
+            if !cleaned.is_empty() {
+                dir_name = cleaned;
             }
         }
         dir_name

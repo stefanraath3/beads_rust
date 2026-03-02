@@ -132,10 +132,10 @@ fn discover_bd() -> Option<BinaryVersion> {
     }
 
     for path in common_paths {
-        if path.exists() {
-            if let Ok(version) = probe_binary("bd", &path) {
-                return Some(version);
-            }
+        if path.exists()
+            && let Ok(version) = probe_binary("bd", &path)
+        {
+            return Some(version);
         }
     }
 
@@ -149,30 +149,29 @@ fn discover_bd() -> Option<BinaryVersion> {
 
 /// Probe a binary to extract version information.
 fn probe_binary(name: &str, path: &Path) -> Result<BinaryVersion, String> {
-    if name == "bd" {
-        if let Some(output) = run_version_command(path, &["version"]) {
-            if looks_like_br(&output) {
-                return Err(format!(
-                    "bd binary at {} appears to be br; set BD_BINARY to real bd",
-                    path.display()
-                ));
-            }
-        }
+    if name == "bd"
+        && let Some(output) = run_version_command(path, &["version"])
+        && looks_like_br(&output)
+    {
+        return Err(format!(
+            "bd binary at {} appears to be br; set BD_BINARY to real bd",
+            path.display()
+        ));
     }
 
     // Try `--version --json` first
     let json_output = run_version_command(path, &["version", "--json"]);
-    if let Some(output) = json_output {
-        if let Ok(parsed) = parse_json_version(&output) {
-            return Ok(BinaryVersion {
-                binary: name.to_string(),
-                path: path.to_path_buf(),
-                version: parsed.version,
-                commit: parsed.commit,
-                build_date: parsed.build_date,
-                raw_output: output,
-            });
-        }
+    if let Some(output) = json_output
+        && let Ok(parsed) = parse_json_version(&output)
+    {
+        return Ok(BinaryVersion {
+            binary: name.to_string(),
+            path: path.to_path_buf(),
+            version: parsed.version,
+            commit: parsed.commit,
+            build_date: parsed.build_date,
+            raw_output: output,
+        });
     }
 
     // Fallback to plain `--version`

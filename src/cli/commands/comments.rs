@@ -316,33 +316,33 @@ fn read_comment_text(args: &CommentAddArgs) -> Result<String> {
 }
 
 fn resolve_author(author_override: Option<&str>, actor: Option<&str>) -> String {
-    if let Some(author) = author_override {
-        if !author.trim().is_empty() {
-            return author.to_string();
-        }
+    if let Some(author) = author_override
+        && !author.trim().is_empty()
+    {
+        return author.to_string();
     }
-    if let Some(actor) = actor {
-        if !actor.trim().is_empty() {
-            return actor.to_string();
-        }
+    if let Some(actor) = actor
+        && !actor.trim().is_empty()
+    {
+        return actor.to_string();
     }
-    if let Ok(value) = std::env::var("BD_ACTOR") {
-        if !value.trim().is_empty() {
-            return value;
-        }
+    if let Ok(value) = std::env::var("BD_ACTOR")
+        && !value.trim().is_empty()
+    {
+        return value;
     }
-    if let Ok(value) = std::env::var("BEADS_ACTOR") {
-        if !value.trim().is_empty() {
-            return value;
-        }
+    if let Ok(value) = std::env::var("BEADS_ACTOR")
+        && !value.trim().is_empty()
+    {
+        return value;
     }
     if let Some(name) = git_user_name() {
         return name;
     }
-    if let Ok(value) = std::env::var("USER") {
-        if !value.trim().is_empty() {
-            return value;
-        }
+    if let Ok(value) = std::env::var("USER")
+        && !value.trim().is_empty()
+    {
+        return value;
     }
 
     "unknown".to_string()

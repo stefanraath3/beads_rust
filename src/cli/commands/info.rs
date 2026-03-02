@@ -180,10 +180,10 @@ fn print_human(info: &InfoOutput) {
         println!("Issue count: {count}");
     }
 
-    if let Some(config_map) = &info.config {
-        if let Some(prefix) = config_map.get("issue_prefix") {
-            println!("Issue prefix: {prefix}");
-        }
+    if let Some(config_map) = &info.config
+        && let Some(prefix) = config_map.get("issue_prefix")
+    {
+        println!("Issue prefix: {prefix}");
     }
 
     if let Some(schema) = &info.schema {
@@ -230,12 +230,12 @@ fn render_info_rich(info: &InfoOutput, ctx: &OutputContext) {
     content.append("\n");
 
     // Prefix (if available)
-    if let Some(config_map) = &info.config {
-        if let Some(prefix) = config_map.get("issue_prefix") {
-            content.append_styled("Prefix      ", theme.dimmed.clone());
-            content.append_styled(prefix, theme.issue_id.clone());
-            content.append("\n");
-        }
+    if let Some(config_map) = &info.config
+        && let Some(prefix) = config_map.get("issue_prefix")
+    {
+        content.append_styled("Prefix      ", theme.dimmed.clone());
+        content.append_styled(prefix, theme.issue_id.clone());
+        content.append("\n");
     }
 
     content.append("\n");

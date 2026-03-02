@@ -780,10 +780,10 @@ fn e2e_sync_deterministic_export() {
     let lines: Vec<&str> = exports[0].lines().collect();
     let mut ids: Vec<String> = Vec::new();
     for line in lines {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-            if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
-                ids.push(id.to_string());
-            }
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(line)
+            && let Some(id) = json.get("id").and_then(|v| v.as_str())
+        {
+            ids.push(id.to_string());
         }
     }
     let mut sorted_ids = ids.clone();

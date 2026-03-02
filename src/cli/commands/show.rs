@@ -135,10 +135,10 @@ fn format_issue_details(details: &crate::format::IssueDetails, use_color: bool) 
         let _ = writeln!(output, "Labels: {}", details.labels.join(", "));
     }
 
-    if let Some(ext_ref) = &issue.external_ref {
-        if !ext_ref.is_empty() {
-            let _ = writeln!(output, "Ref: {ext_ref}");
-        }
+    if let Some(ext_ref) = &issue.external_ref
+        && !ext_ref.is_empty()
+    {
+        let _ = writeln!(output, "Ref: {ext_ref}");
     }
 
     if let Some(due) = &issue.due_at {
@@ -149,17 +149,17 @@ fn format_issue_details(details: &crate::format::IssueDetails, use_color: bool) 
         let _ = writeln!(output, "Deferred until: {}", defer.format("%Y-%m-%d"));
     }
 
-    if let Some(minutes) = issue.estimated_minutes {
-        if minutes > 0 {
-            let hours = minutes / 60;
-            let remaining = minutes % 60;
-            if hours > 0 && remaining > 0 {
-                let _ = writeln!(output, "Estimate: {hours}h {remaining}m");
-            } else if hours > 0 {
-                let _ = writeln!(output, "Estimate: {hours}h");
-            } else {
-                let _ = writeln!(output, "Estimate: {remaining}m");
-            }
+    if let Some(minutes) = issue.estimated_minutes
+        && minutes > 0
+    {
+        let hours = minutes / 60;
+        let remaining = minutes % 60;
+        if hours > 0 && remaining > 0 {
+            let _ = writeln!(output, "Estimate: {hours}h {remaining}m");
+        } else if hours > 0 {
+            let _ = writeln!(output, "Estimate: {hours}h");
+        } else {
+            let _ = writeln!(output, "Estimate: {remaining}m");
         }
     }
 
@@ -178,28 +178,28 @@ fn format_issue_details(details: &crate::format::IssueDetails, use_color: bool) 
         let _ = writeln!(output, "{desc}");
     }
 
-    if let Some(design) = &issue.design {
-        if !design.is_empty() {
-            output.push('\n');
-            let _ = writeln!(output, "Design:");
-            let _ = writeln!(output, "{design}");
-        }
+    if let Some(design) = &issue.design
+        && !design.is_empty()
+    {
+        output.push('\n');
+        let _ = writeln!(output, "Design:");
+        let _ = writeln!(output, "{design}");
     }
 
-    if let Some(ac) = &issue.acceptance_criteria {
-        if !ac.is_empty() {
-            output.push('\n');
-            let _ = writeln!(output, "Acceptance Criteria:");
-            let _ = writeln!(output, "{ac}");
-        }
+    if let Some(ac) = &issue.acceptance_criteria
+        && !ac.is_empty()
+    {
+        output.push('\n');
+        let _ = writeln!(output, "Acceptance Criteria:");
+        let _ = writeln!(output, "{ac}");
     }
 
-    if let Some(notes) = &issue.notes {
-        if !notes.is_empty() {
-            output.push('\n');
-            let _ = writeln!(output, "Notes:");
-            let _ = writeln!(output, "{notes}");
-        }
+    if let Some(notes) = &issue.notes
+        && !notes.is_empty()
+    {
+        output.push('\n');
+        let _ = writeln!(output, "Notes:");
+        let _ = writeln!(output, "{notes}");
     }
 
     if !details.dependencies.is_empty() {

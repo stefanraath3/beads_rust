@@ -139,10 +139,10 @@ impl<'a> IssuePanel<'a> {
             }
         }
 
-        if self.show_dependents {
-            if let Some(details) = self.details {
-                render_dependency_list("Dependents", &details.dependents, &mut content, self.theme);
-            }
+        if self.show_dependents
+            && let Some(details) = self.details
+        {
+            render_dependency_list("Dependents", &details.dependents, &mut content, self.theme);
         }
 
         // Comments

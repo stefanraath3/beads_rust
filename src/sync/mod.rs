@@ -944,73 +944,73 @@ pub fn preflight_import(
     }
 
     // Check 6: Prefix mismatch guard
-    if !config.skip_prefix_validation {
-        if let Some(prefix) = expected_prefix {
-            let file = File::open(input_path);
-            match file {
-                Ok(f) => {
-                    let reader = BufReader::new(f);
-                    let mut mismatched_ids: Vec<String> = Vec::new();
-                    for line_result in reader.lines() {
-                        let Ok(line) = line_result else { continue };
-                        let trimmed = line.trim();
-                        if trimmed.is_empty() {
+    if !config.skip_prefix_validation
+        && let Some(prefix) = expected_prefix
+    {
+        let file = File::open(input_path);
+        match file {
+            Ok(f) => {
+                let reader = BufReader::new(f);
+                let mut mismatched_ids: Vec<String> = Vec::new();
+                for line_result in reader.lines() {
+                    let Ok(line) = line_result else { continue };
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    if let Ok(partial) = serde_json::from_str::<PartialId>(trimmed) {
+                        // Skip tombstones — they may retain a foreign prefix legitimately
+                        #[derive(Deserialize)]
+                        struct StatusProbe {
+                            status: Option<String>,
+                        }
+                        let is_tombstone = serde_json::from_str::<StatusProbe>(trimmed)
+                            .ok()
+                            .and_then(|p| p.status)
+                            .is_some_and(|s| s == "tombstone");
+                        if is_tombstone {
                             continue;
                         }
-                        if let Ok(partial) = serde_json::from_str::<PartialId>(trimmed) {
-                            // Skip tombstones — they may retain a foreign prefix legitimately
-                            #[derive(Deserialize)]
-                            struct StatusProbe {
-                                status: Option<String>,
-                            }
-                            let is_tombstone = serde_json::from_str::<StatusProbe>(trimmed)
-                                .ok()
-                                .and_then(|p| p.status)
-                                .is_some_and(|s| s == "tombstone");
-                            if is_tombstone {
-                                continue;
-                            }
-                            if !partial.id.starts_with(prefix) {
-                                mismatched_ids.push(partial.id);
-                            }
+                        if !partial.id.starts_with(prefix) {
+                            mismatched_ids.push(partial.id);
                         }
                     }
-                    if mismatched_ids.is_empty() {
-                        result.add(PreflightCheck::pass(
-                            "prefix_match",
-                            "Issue IDs match expected prefix",
-                            format!("All issue IDs start with '{prefix}'."),
-                        ));
-                        tracing::debug!(prefix = prefix, "Prefix match check: PASS");
-                    } else {
-                        let preview: Vec<String> = mismatched_ids.iter().take(5).cloned().collect();
-                        result.add(PreflightCheck::fail(
-                            "prefix_match",
-                            "Issue IDs match expected prefix",
-                            format!(
-                                "Expected prefix '{}', found {} mismatched ID(s): {}{}",
-                                prefix,
-                                mismatched_ids.len(),
-                                preview.join(", "),
-                                if mismatched_ids.len() > 5 { " ..." } else { "" }
-                            ),
-                            "Use --force to skip prefix validation or --rename-prefix to remap IDs.",
-                        ));
-                        tracing::debug!(
-                            prefix = prefix,
-                            mismatch_count = mismatched_ids.len(),
-                            "Prefix match check: FAIL"
-                        );
-                    }
                 }
-                Err(e) => {
-                    result.add(PreflightCheck::warn(
+                if mismatched_ids.is_empty() {
+                    result.add(PreflightCheck::pass(
                         "prefix_match",
                         "Issue IDs match expected prefix",
-                        format!("Could not open file for prefix validation: {e}"),
-                        "Verify file is readable.",
+                        format!("All issue IDs start with '{prefix}'."),
                     ));
+                    tracing::debug!(prefix = prefix, "Prefix match check: PASS");
+                } else {
+                    let preview: Vec<String> = mismatched_ids.iter().take(5).cloned().collect();
+                    result.add(PreflightCheck::fail(
+                        "prefix_match",
+                        "Issue IDs match expected prefix",
+                        format!(
+                            "Expected prefix '{}', found {} mismatched ID(s): {}{}",
+                            prefix,
+                            mismatched_ids.len(),
+                            preview.join(", "),
+                            if mismatched_ids.len() > 5 { " ..." } else { "" }
+                        ),
+                        "Use --force to skip prefix validation or --rename-prefix to remap IDs.",
+                    ));
+                    tracing::debug!(
+                        prefix = prefix,
+                        mismatch_count = mismatched_ids.len(),
+                        "Prefix match check: FAIL"
+                    );
                 }
+            }
+            Err(e) => {
+                result.add(PreflightCheck::warn(
+                    "prefix_match",
+                    "Issue IDs match expected prefix",
+                    format!("Could not open file for prefix validation: {e}"),
+                    "Verify file is readable.",
+                ));
             }
         }
     }
@@ -1969,14 +1969,14 @@ fn detect_collision(
     computed_hash: &str,
 ) -> Result<CollisionResult> {
     // Phase 1: External reference match
-    if let Some(ref external_ref) = incoming.external_ref {
-        if let Some(existing) = storage.find_by_external_ref(external_ref)? {
-            return Ok(CollisionResult::Match {
-                existing_id: existing.id,
-                match_type: MatchType::ExternalRef,
-                phase: 1,
-            });
-        }
+    if let Some(ref external_ref) = incoming.external_ref
+        && let Some(existing) = storage.find_by_external_ref(external_ref)?
+    {
+        return Ok(CollisionResult::Match {
+            existing_id: existing.id,
+            match_type: MatchType::ExternalRef,
+            phase: 1,
+        });
     }
 
     // Phase 2: Content hash match
@@ -2187,108 +2187,108 @@ pub fn import_from_jsonl(
     }
 
     // Step 4: Prefix validation (if enabled and prefix provided)
-    if !config.skip_prefix_validation {
-        if let Some(prefix) = expected_prefix {
-            let mut mismatches = Vec::new();
-            for issue in &issues {
-                // Check if ID starts with expected prefix
-                if !issue.id.starts_with(prefix) {
-                    // Skip tombstones with wrong prefix (silently drop)
-                    if issue.status == crate::model::Status::Tombstone {
-                        continue;
-                    }
-                    mismatches.push(issue.id.clone());
+    if !config.skip_prefix_validation
+        && let Some(prefix) = expected_prefix
+    {
+        let mut mismatches = Vec::new();
+        for issue in &issues {
+            // Check if ID starts with expected prefix
+            if !issue.id.starts_with(prefix) {
+                // Skip tombstones with wrong prefix (silently drop)
+                if issue.status == crate::model::Status::Tombstone {
+                    continue;
                 }
+                mismatches.push(issue.id.clone());
             }
+        }
 
-            if !mismatches.is_empty() && !config.rename_on_import {
-                return Err(BeadsError::Config(format!(
-                    "Prefix mismatch: expected '{}', found issues: {}",
-                    prefix,
-                    mismatches
-                        .iter()
-                        .take(5)
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )));
-            }
-
-            // Fix: Rename issues with wrong prefix if requested
-            if config.rename_on_import && !mismatches.is_empty() {
-                use crate::util::id::{IdConfig, IdGenerator};
-
-                // Collect details to avoid borrowing issues during generation
-                let to_rename: Vec<_> = issues
+        if !mismatches.is_empty() && !config.rename_on_import {
+            return Err(BeadsError::Config(format!(
+                "Prefix mismatch: expected '{}', found issues: {}",
+                prefix,
+                mismatches
                     .iter()
-                    .filter(|i| mismatches.contains(&i.id))
-                    .map(|i| {
-                        (
-                            i.id.clone(),
-                            i.title.clone(),
-                            i.description.clone(),
-                            i.created_by.clone(),
-                            i.created_at,
-                        )
-                    })
-                    .collect();
+                    .take(5)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+        }
 
-                let generator = IdGenerator::new(IdConfig::with_prefix(prefix));
-                let mut renames = std::collections::HashMap::new();
-                let existing_ids: std::collections::HashSet<String> =
-                    storage.get_all_ids()?.into_iter().collect();
+        // Fix: Rename issues with wrong prefix if requested
+        if config.rename_on_import && !mismatches.is_empty() {
+            use crate::util::id::{IdConfig, IdGenerator};
 
-                for (old_id, title, desc, creator, created_at) in to_rename {
-                    let new_id = generator.generate(
-                        &title,
-                        desc.as_deref(),
-                        creator.as_deref(),
-                        created_at,
-                        issues.len(),
-                        |candidate| {
-                            existing_ids.contains(candidate)
-                                || issues.iter().any(|i| i.id == candidate)
-                                || renames.values().any(|v| *v == candidate)
-                        },
-                    );
-                    renames.insert(old_id, new_id);
+            // Collect details to avoid borrowing issues during generation
+            let to_rename: Vec<_> = issues
+                .iter()
+                .filter(|i| mismatches.contains(&i.id))
+                .map(|i| {
+                    (
+                        i.id.clone(),
+                        i.title.clone(),
+                        i.description.clone(),
+                        i.created_by.clone(),
+                        i.created_at,
+                    )
+                })
+                .collect();
+
+            let generator = IdGenerator::new(IdConfig::with_prefix(prefix));
+            let mut renames = std::collections::HashMap::new();
+            let existing_ids: std::collections::HashSet<String> =
+                storage.get_all_ids()?.into_iter().collect();
+
+            for (old_id, title, desc, creator, created_at) in to_rename {
+                let new_id = generator.generate(
+                    &title,
+                    desc.as_deref(),
+                    creator.as_deref(),
+                    created_at,
+                    issues.len(),
+                    |candidate| {
+                        existing_ids.contains(candidate)
+                            || issues.iter().any(|i| i.id == candidate)
+                            || renames.values().any(|v| *v == candidate)
+                    },
+                );
+                renames.insert(old_id, new_id);
+            }
+
+            // Apply renames
+            for issue in &mut issues {
+                if let Some(new_id) = renames.get(&issue.id) {
+                    // Preserve old ID in external_ref if empty
+                    if issue.external_ref.is_none() {
+                        issue.external_ref = Some(issue.id.clone());
+                    }
+                    issue.id = new_id.clone();
+                    // Recompute content hash since ID/external_ref changed
+                    issue.content_hash = Some(content_hash(issue));
                 }
-
-                // Apply renames
-                for issue in &mut issues {
-                    if let Some(new_id) = renames.get(&issue.id) {
-                        // Preserve old ID in external_ref if empty
-                        if issue.external_ref.is_none() {
-                            issue.external_ref = Some(issue.id.clone());
-                        }
-                        issue.id = new_id.clone();
-                        // Recompute content hash since ID/external_ref changed
-                        issue.content_hash = Some(content_hash(issue));
+                // Update dependencies
+                for dep in &mut issue.dependencies {
+                    if let Some(new_target) = renames.get(&dep.depends_on_id) {
+                        dep.depends_on_id = new_target.clone();
                     }
-                    // Update dependencies
-                    for dep in &mut issue.dependencies {
-                        if let Some(new_target) = renames.get(&dep.depends_on_id) {
-                            dep.depends_on_id = new_target.clone();
-                        }
-                        if let Some(new_source) = renames.get(&dep.issue_id) {
-                            dep.issue_id = new_source.clone();
-                        }
+                    if let Some(new_source) = renames.get(&dep.issue_id) {
+                        dep.issue_id = new_source.clone();
                     }
-                    // Update comments
-                    for comment in &mut issue.comments {
-                        if let Some(new_source) = renames.get(&comment.issue_id) {
-                            comment.issue_id = new_source.clone();
-                        }
+                }
+                // Update comments
+                for comment in &mut issue.comments {
+                    if let Some(new_source) = renames.get(&comment.issue_id) {
+                        comment.issue_id = new_source.clone();
                     }
                 }
             }
+        }
 
-            // Fix: Filter out tombstones with wrong prefix that were "silently dropped" above.
-            // If we are here and rename_on_import is false, then all remaining mismatches MUST be tombstones
-            // (otherwise we would have errored above). We drop them now.
-            if !config.rename_on_import {
-                issues.retain(|issue| issue.id.starts_with(prefix));
-            }
+        // Fix: Filter out tombstones with wrong prefix that were "silently dropped" above.
+        // If we are here and rename_on_import is false, then all remaining mismatches MUST be tombstones
+        // (otherwise we would have errored above). We drop them now.
+        if !config.rename_on_import {
+            issues.retain(|issue| issue.id.starts_with(prefix));
         }
     }
 

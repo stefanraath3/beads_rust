@@ -168,11 +168,11 @@ impl<'a> RichIssuePanel<'a> {
         content.push_str(&format!("[{priority}] [{type_str}] {status_str}\n"));
 
         // Description if present and enabled
-        if self.show_description {
-            if let Some(desc) = &self.issue.description {
-                content.push('\n');
-                content.push_str(desc);
-            }
+        if self.show_description
+            && let Some(desc) = &self.issue.description
+        {
+            content.push('\n');
+            content.push_str(desc);
         }
 
         let status_style = self.theme.status_style(&self.issue.status);

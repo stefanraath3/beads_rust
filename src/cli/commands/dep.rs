@@ -299,10 +299,10 @@ fn dep_list(
     if matches!(args.direction, DepDirection::Down | DepDirection::Both) {
         let deps = storage.get_dependencies_with_metadata(&issue_id)?;
         for dep in deps {
-            if let Some(ref filter_type) = args.dep_type {
-                if dep.dep_type != *filter_type {
-                    continue;
-                }
+            if let Some(ref filter_type) = args.dep_type
+                && dep.dep_type != *filter_type
+            {
+                continue;
             }
             items.push(DepListItem {
                 issue_id: issue_id.clone(),
@@ -319,10 +319,10 @@ fn dep_list(
     if matches!(args.direction, DepDirection::Up | DepDirection::Both) {
         let deps = storage.get_dependents_with_metadata(&issue_id)?;
         for dep in deps {
-            if let Some(ref filter_type) = args.dep_type {
-                if dep.dep_type != *filter_type {
-                    continue;
-                }
+            if let Some(ref filter_type) = args.dep_type
+                && dep.dep_type != *filter_type
+            {
+                continue;
             }
             items.push(DepListItem {
                 issue_id: dep.id.clone(),

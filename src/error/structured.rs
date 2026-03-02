@@ -645,12 +645,12 @@ impl StructuredError {
                 }
             }
             BeadsError::HasDependents { id, .. } => {
-                if let Some(ctx) = context {
-                    if let Some(count) = ctx.get("dependent_count") {
-                        return Some(format!(
-                            "Use --force to delete anyway, or close {count} dependents first."
-                        ));
-                    }
+                if let Some(ctx) = context
+                    && let Some(count) = ctx.get("dependent_count")
+                {
+                    return Some(format!(
+                        "Use --force to delete anyway, or close {count} dependents first."
+                    ));
                 }
                 Some(format!("Use --force to delete '{id}' anyway."))
             }

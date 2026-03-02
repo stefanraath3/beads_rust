@@ -120,7 +120,10 @@ impl SqliteStorage {
         if user_version < CURRENT_SCHEMA_VERSION {
             apply_schema(&conn)?;
         }
-        Ok(Self { conn, mutation_count: 0 })
+        Ok(Self {
+            conn,
+            mutation_count: 0,
+        })
     }
 
     /// Open an in-memory database for testing.
@@ -131,7 +134,10 @@ impl SqliteStorage {
     pub fn open_memory() -> Result<Self> {
         let conn = Connection::open(":memory:")?;
         apply_schema(&conn)?;
-        Ok(Self { conn, mutation_count: 0 })
+        Ok(Self {
+            conn,
+            mutation_count: 0,
+        })
     }
 
     /// Attempt a WAL checkpoint (TRUNCATE mode) to flush WAL back to the main
@@ -892,34 +898,33 @@ impl SqliteStorage {
 
         let mut params: Vec<SqliteValue> = Vec::new();
 
-        if let Some(ref statuses) = filters.statuses {
-            if !statuses.is_empty() {
-                let placeholders: Vec<String> = statuses.iter().map(|_| "?".to_string()).collect();
-                let _ = write!(sql, " AND status IN ({}) ", placeholders.join(","));
-                for s in statuses {
-                    params.push(SqliteValue::from(s.as_str()));
-                }
+        if let Some(ref statuses) = filters.statuses
+            && !statuses.is_empty()
+        {
+            let placeholders: Vec<String> = statuses.iter().map(|_| "?".to_string()).collect();
+            let _ = write!(sql, " AND status IN ({}) ", placeholders.join(","));
+            for s in statuses {
+                params.push(SqliteValue::from(s.as_str()));
             }
         }
 
-        if let Some(ref types) = filters.types {
-            if !types.is_empty() {
-                let placeholders: Vec<String> = types.iter().map(|_| "?".to_string()).collect();
-                let _ = write!(sql, " AND issue_type IN ({}) ", placeholders.join(","));
-                for t in types {
-                    params.push(SqliteValue::from(t.as_str()));
-                }
+        if let Some(ref types) = filters.types
+            && !types.is_empty()
+        {
+            let placeholders: Vec<String> = types.iter().map(|_| "?".to_string()).collect();
+            let _ = write!(sql, " AND issue_type IN ({}) ", placeholders.join(","));
+            for t in types {
+                params.push(SqliteValue::from(t.as_str()));
             }
         }
 
-        if let Some(ref priorities) = filters.priorities {
-            if !priorities.is_empty() {
-                let placeholders: Vec<String> =
-                    priorities.iter().map(|_| "?".to_string()).collect();
-                let _ = write!(sql, " AND priority IN ({}) ", placeholders.join(","));
-                for p in priorities {
-                    params.push(SqliteValue::from(i64::from(p.0)));
-                }
+        if let Some(ref priorities) = filters.priorities
+            && !priorities.is_empty()
+        {
+            let placeholders: Vec<String> = priorities.iter().map(|_| "?".to_string()).collect();
+            let _ = write!(sql, " AND priority IN ({}) ", placeholders.join(","));
+            for p in priorities {
+                params.push(SqliteValue::from(i64::from(p.0)));
             }
         }
 
@@ -951,17 +956,17 @@ impl SqliteStorage {
             }
         }
 
-        if let Some(ref labels_or) = filters.labels_or {
-            if !labels_or.is_empty() {
-                let placeholders: Vec<String> = labels_or.iter().map(|_| "?".to_string()).collect();
-                let _ = write!(
-                    sql,
-                    " AND id IN (SELECT issue_id FROM labels WHERE label IN ({}))",
-                    placeholders.join(",")
-                );
-                for l in labels_or {
-                    params.push(SqliteValue::from(l.as_str()));
-                }
+        if let Some(ref labels_or) = filters.labels_or
+            && !labels_or.is_empty()
+        {
+            let placeholders: Vec<String> = labels_or.iter().map(|_| "?".to_string()).collect();
+            let _ = write!(
+                sql,
+                " AND id IN (SELECT issue_id FROM labels WHERE label IN ({}))",
+                placeholders.join(",")
+            );
+            for l in labels_or {
+                params.push(SqliteValue::from(l.as_str()));
             }
         }
 
@@ -1017,12 +1022,12 @@ impl SqliteStorage {
             sql.push_str(" ORDER BY priority ASC, created_at DESC");
         }
 
-        if let Some(limit) = filters.limit {
-            if limit > 0 {
-                sql.push_str(" LIMIT ?");
-                #[allow(clippy::cast_possible_wrap)]
-                params.push(SqliteValue::from(limit as i64));
-            }
+        if let Some(limit) = filters.limit
+            && limit > 0
+        {
+            sql.push_str(" LIMIT ?");
+            #[allow(clippy::cast_possible_wrap)]
+            params.push(SqliteValue::from(limit as i64));
         }
 
         let rows = self.conn.query_with_params(&sql, &params)?;
@@ -1069,34 +1074,33 @@ impl SqliteStorage {
         params.push(SqliteValue::from(pattern.as_str()));
         params.push(SqliteValue::from(pattern));
 
-        if let Some(ref statuses) = filters.statuses {
-            if !statuses.is_empty() {
-                let placeholders: Vec<String> = statuses.iter().map(|_| "?".to_string()).collect();
-                let _ = write!(sql, " AND status IN ({})", placeholders.join(","));
-                for s in statuses {
-                    params.push(SqliteValue::from(s.as_str()));
-                }
+        if let Some(ref statuses) = filters.statuses
+            && !statuses.is_empty()
+        {
+            let placeholders: Vec<String> = statuses.iter().map(|_| "?".to_string()).collect();
+            let _ = write!(sql, " AND status IN ({})", placeholders.join(","));
+            for s in statuses {
+                params.push(SqliteValue::from(s.as_str()));
             }
         }
 
-        if let Some(ref types) = filters.types {
-            if !types.is_empty() {
-                let placeholders: Vec<String> = types.iter().map(|_| "?".to_string()).collect();
-                let _ = write!(sql, " AND issue_type IN ({})", placeholders.join(","));
-                for t in types {
-                    params.push(SqliteValue::from(t.as_str()));
-                }
+        if let Some(ref types) = filters.types
+            && !types.is_empty()
+        {
+            let placeholders: Vec<String> = types.iter().map(|_| "?".to_string()).collect();
+            let _ = write!(sql, " AND issue_type IN ({})", placeholders.join(","));
+            for t in types {
+                params.push(SqliteValue::from(t.as_str()));
             }
         }
 
-        if let Some(ref priorities) = filters.priorities {
-            if !priorities.is_empty() {
-                let placeholders: Vec<String> =
-                    priorities.iter().map(|_| "?".to_string()).collect();
-                let _ = write!(sql, " AND priority IN ({})", placeholders.join(","));
-                for p in priorities {
-                    params.push(SqliteValue::from(i64::from(p.0)));
-                }
+        if let Some(ref priorities) = filters.priorities
+            && !priorities.is_empty()
+        {
+            let placeholders: Vec<String> = priorities.iter().map(|_| "?".to_string()).collect();
+            let _ = write!(sql, " AND priority IN ({})", placeholders.join(","));
+            for p in priorities {
+                params.push(SqliteValue::from(i64::from(p.0)));
             }
         }
 
@@ -1128,17 +1132,17 @@ impl SqliteStorage {
             }
         }
 
-        if let Some(ref labels_or) = filters.labels_or {
-            if !labels_or.is_empty() {
-                let placeholders: Vec<String> = labels_or.iter().map(|_| "?".to_string()).collect();
-                let _ = write!(
-                    sql,
-                    " AND id IN (SELECT issue_id FROM labels WHERE label IN ({}))",
-                    placeholders.join(",")
-                );
-                for l in labels_or {
-                    params.push(SqliteValue::from(l.as_str()));
-                }
+        if let Some(ref labels_or) = filters.labels_or
+            && !labels_or.is_empty()
+        {
+            let placeholders: Vec<String> = labels_or.iter().map(|_| "?".to_string()).collect();
+            let _ = write!(
+                sql,
+                " AND id IN (SELECT issue_id FROM labels WHERE label IN ({}))",
+                placeholders.join(",")
+            );
+            for l in labels_or {
+                params.push(SqliteValue::from(l.as_str()));
             }
         }
 
@@ -1150,12 +1154,12 @@ impl SqliteStorage {
 
         sql.push_str(" ORDER BY priority ASC, created_at DESC");
 
-        if let Some(limit) = filters.limit {
-            if limit > 0 {
-                sql.push_str(" LIMIT ?");
-                #[allow(clippy::cast_possible_wrap)]
-                params.push(SqliteValue::from(limit as i64));
-            }
+        if let Some(limit) = filters.limit
+            && limit > 0
+        {
+            sql.push_str(" LIMIT ?");
+            #[allow(clippy::cast_possible_wrap)]
+            params.push(SqliteValue::from(limit as i64));
         }
 
         let rows = self.conn.query_with_params(&sql, &params)?;
@@ -1207,9 +1211,7 @@ impl SqliteStorage {
 
         // Ready condition 2: NOT in blocked_issues_cache (NOT IN — frankensqlite
         // does not support correlated NOT EXISTS subqueries)
-        sql.push_str(
-            " AND issues.id NOT IN (SELECT issue_id FROM blocked_issues_cache)",
-        );
+        sql.push_str(" AND issues.id NOT IN (SELECT issue_id FROM blocked_issues_cache)");
 
         // Ready condition 3: `defer_until` is NULL or <= now (unless `include_deferred`)
         if !filters.include_deferred {
@@ -1227,25 +1229,24 @@ impl SqliteStorage {
         sql.push_str(" AND (is_template = 0 OR is_template IS NULL)");
 
         // Filter by types
-        if let Some(ref types) = filters.types {
-            if !types.is_empty() {
-                let placeholders: Vec<String> = types.iter().map(|_| "?".to_string()).collect();
-                let _ = write!(sql, " AND issue_type IN ({}) ", placeholders.join(","));
-                for t in types {
-                    params.push(SqliteValue::from(t.as_str()));
-                }
+        if let Some(ref types) = filters.types
+            && !types.is_empty()
+        {
+            let placeholders: Vec<String> = types.iter().map(|_| "?".to_string()).collect();
+            let _ = write!(sql, " AND issue_type IN ({}) ", placeholders.join(","));
+            for t in types {
+                params.push(SqliteValue::from(t.as_str()));
             }
         }
 
         // Filter by priorities
-        if let Some(ref priorities) = filters.priorities {
-            if !priorities.is_empty() {
-                let placeholders: Vec<String> =
-                    priorities.iter().map(|_| "?".to_string()).collect();
-                let _ = write!(sql, " AND priority IN ({})", placeholders.join(","));
-                for p in priorities {
-                    params.push(SqliteValue::from(i64::from(p.0)));
-                }
+        if let Some(ref priorities) = filters.priorities
+            && !priorities.is_empty()
+        {
+            let placeholders: Vec<String> = priorities.iter().map(|_| "?".to_string()).collect();
+            let _ = write!(sql, " AND priority IN ({})", placeholders.join(","));
+            for p in priorities {
+                params.push(SqliteValue::from(i64::from(p.0)));
             }
         }
 
@@ -1328,12 +1329,12 @@ impl SqliteStorage {
         }
 
         // Apply limit in SQL to avoid fetching extra rows.
-        if let Some(limit) = filters.limit {
-            if limit > 0 {
-                sql.push_str(" LIMIT ?");
-                let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
-                params.push(SqliteValue::from(limit_i64));
-            }
+        if let Some(limit) = filters.limit
+            && limit > 0
+        {
+            sql.push_str(" LIMIT ?");
+            let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
+            params.push(SqliteValue::from(limit_i64));
         }
 
         let rows = self.conn.query_with_params(&sql, &params)?;
@@ -1962,14 +1963,15 @@ impl SqliteStorage {
         actor: &str,
     ) -> Result<bool> {
         // Check for cycles if this is a blocking dependency
-        if let Ok(dt) = dep_type.parse::<DependencyType>() {
-            if dt.is_blocking() && self.would_create_cycle(issue_id, depends_on_id, true)? {
-                return Err(BeadsError::DependencyCycle {
-                    path: format!(
-                        "Adding dependency {issue_id} -> {depends_on_id} would create a cycle"
-                    ),
-                });
-            }
+        if let Ok(dt) = dep_type.parse::<DependencyType>()
+            && dt.is_blocking()
+            && self.would_create_cycle(issue_id, depends_on_id, true)?
+        {
+            return Err(BeadsError::DependencyCycle {
+                path: format!(
+                    "Adding dependency {issue_id} -> {depends_on_id} would create a cycle"
+                ),
+            });
         }
 
         self.mutate("add_dependency", actor, |conn, ctx| {
@@ -3718,10 +3720,10 @@ fn query_external_project_capabilities(
         let rows = conn.query_with_params(&sql, &params)?;
 
         for row in &rows {
-            if let Some(label) = row.get(0).and_then(SqliteValue::as_text) {
-                if let Some(cap) = label.strip_prefix("provides:") {
-                    satisfied.insert(cap.to_string());
-                }
+            if let Some(label) = row.get(0).and_then(SqliteValue::as_text)
+                && let Some(cap) = label.strip_prefix("provides:")
+            {
+                satisfied.insert(cap.to_string());
             }
         }
     }
@@ -3984,26 +3986,26 @@ impl SqliteStorage {
             while let Some((u, idx)) = stack.last_mut() {
                 let neighbors = graph.get(u);
 
-                if let Some(neighbors) = neighbors {
-                    if *idx < neighbors.len() {
-                        let v = &neighbors[*idx];
-                        *idx += 1;
+                if let Some(neighbors) = neighbors
+                    && *idx < neighbors.len()
+                {
+                    let v = &neighbors[*idx];
+                    *idx += 1;
 
-                        if rec_stack.contains(v) {
-                            // Found a cycle: reconstruct it from the current path
-                            if let Some(start_pos) = path.iter().position(|x| x == v) {
-                                let mut cycle = path[start_pos..].to_vec();
-                                cycle.push(v.clone()); // Close the loop
-                                cycles.push(cycle);
-                            }
-                        } else if !visited.contains(v) {
-                            visited.insert(v.clone());
-                            rec_stack.insert(v.clone());
-                            path.push(v.clone());
-                            stack.push((v.clone(), 0));
+                    if rec_stack.contains(v) {
+                        // Found a cycle: reconstruct it from the current path
+                        if let Some(start_pos) = path.iter().position(|x| x == v) {
+                            let mut cycle = path[start_pos..].to_vec();
+                            cycle.push(v.clone()); // Close the loop
+                            cycles.push(cycle);
                         }
-                        continue;
+                    } else if !visited.contains(v) {
+                        visited.insert(v.clone());
+                        rec_stack.insert(v.clone());
+                        path.push(v.clone());
+                        stack.push((v.clone(), 0));
                     }
+                    continue;
                 }
 
                 // Finished processing all neighbors of u

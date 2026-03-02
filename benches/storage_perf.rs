@@ -48,7 +48,7 @@ fn create_test_issue(i: usize) -> Issue {
             2 => IssueType::Task,
             _ => IssueType::Chore,
         },
-        assignee: if i % 3 == 0 {
+        assignee: if i.is_multiple_of(3) {
             Some(format!("user{}", i % 10))
         } else {
             None
@@ -156,20 +156,20 @@ fn setup_db_with_deps(issue_count: usize, dep_count: usize) -> (TempDir, SqliteS
 fn configure_group<M: criterion::measurement::Measurement>(
     group: &mut criterion::BenchmarkGroup<'_, M>,
 ) {
-    if let Ok(val) = std::env::var("BENCH_NOISE_THRESHOLD") {
-        if let Ok(f) = val.parse() {
-            group.noise_threshold(f);
-        }
+    if let Ok(val) = std::env::var("BENCH_NOISE_THRESHOLD")
+        && let Ok(f) = val.parse()
+    {
+        group.noise_threshold(f);
     }
-    if let Ok(val) = std::env::var("BENCH_SIGNIFICANCE_LEVEL") {
-        if let Ok(f) = val.parse() {
-            group.significance_level(f);
-        }
+    if let Ok(val) = std::env::var("BENCH_SIGNIFICANCE_LEVEL")
+        && let Ok(f) = val.parse()
+    {
+        group.significance_level(f);
     }
-    if let Ok(val) = std::env::var("BENCH_SAMPLE_SIZE") {
-        if let Ok(n) = val.parse() {
-            group.sample_size(n);
-        }
+    if let Ok(val) = std::env::var("BENCH_SAMPLE_SIZE")
+        && let Ok(n) = val.parse()
+    {
+        group.sample_size(n);
     }
 }
 

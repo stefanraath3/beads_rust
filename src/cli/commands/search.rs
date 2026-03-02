@@ -100,10 +100,11 @@ pub fn execute(
     if args.filters.reverse {
         issues_with_counts.reverse();
     }
-    if let Some(limit) = limit {
-        if limit > 0 && issues_with_counts.len() > limit {
-            issues_with_counts.truncate(limit);
-        }
+    if let Some(limit) = limit
+        && limit > 0
+        && issues_with_counts.len() > limit
+    {
+        issues_with_counts.truncate(limit);
     }
 
     let quiet = cli.quiet.unwrap_or(false);
@@ -192,13 +193,13 @@ fn build_context_snippets(issues: &[crate::model::Issue], query: &str) -> HashMa
 
     let mut snippets = HashMap::new();
     for issue in issues {
-        if let Some(description) = issue.description.as_deref() {
-            if let Some(mat) = regex.find(description) {
-                let snippet = snippet_around_match(description, mat.start(), mat.end(), 32);
-                if !snippet.is_empty() {
-                    snippets.insert(issue.id.clone(), snippet);
-                    continue;
-                }
+        if let Some(description) = issue.description.as_deref()
+            && let Some(mat) = regex.find(description)
+        {
+            let snippet = snippet_around_match(description, mat.start(), mat.end(), 32);
+            if !snippet.is_empty() {
+                snippets.insert(issue.id.clone(), snippet);
+                continue;
             }
         }
 
@@ -380,33 +381,33 @@ fn apply_client_filters(
             .iter()
             .any(|status| status.eq_ignore_ascii_case("deferred"));
 
-    if let Some(min) = min_priority {
-        if !(0..=4).contains(&min) {
-            return Err(BeadsError::InvalidPriority { priority: min });
-        }
+    if let Some(min) = min_priority
+        && !(0..=4).contains(&min)
+    {
+        return Err(BeadsError::InvalidPriority { priority: min });
     }
-    if let Some(max) = max_priority {
-        if !(0..=4).contains(&max) {
-            return Err(BeadsError::InvalidPriority { priority: max });
-        }
+    if let Some(max) = max_priority
+        && !(0..=4).contains(&max)
+    {
+        return Err(BeadsError::InvalidPriority { priority: max });
     }
 
     for issue in issues {
-        if let Some(ids) = &id_filter {
-            if !ids.contains(issue.id.as_str()) {
-                continue;
-            }
+        if let Some(ids) = &id_filter
+            && !ids.contains(issue.id.as_str())
+        {
+            continue;
         }
 
-        if let Some(min) = min_priority {
-            if issue.priority.0 < min {
-                continue;
-            }
+        if let Some(min) = min_priority
+            && issue.priority.0 < min
+        {
+            continue;
         }
-        if let Some(max) = max_priority {
-            if issue.priority.0 > max {
-                continue;
-            }
+        if let Some(max) = max_priority
+            && issue.priority.0 > max
+        {
+            continue;
         }
 
         if let Some(ref needle) = desc_needle {

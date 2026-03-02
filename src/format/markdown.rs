@@ -122,11 +122,9 @@ fn strip_line_markdown(line: &str) -> String {
         }
 
         // Skip markdown formatting characters (only outside inline code)
-        if !in_inline_code {
-            if let Some(skip) = try_skip_formatting(&chars, i, &mut processed) {
-                i = skip;
-                continue;
-            }
+        if !in_inline_code && let Some(skip) = try_skip_formatting(&chars, i, &mut processed) {
+            i = skip;
+            continue;
         }
 
         processed.push(c);
@@ -169,17 +167,19 @@ fn try_skip_formatting(chars: &[char], i: usize, processed: &mut String) -> Opti
     }
 
     // Links: [text](url) -> text
-    if c == '[' {
-        if let Some(new_i) = try_extract_link(chars, i, processed) {
-            return Some(new_i);
-        }
+    if c == '['
+        && let Some(new_i) = try_extract_link(chars, i, processed)
+    {
+        return Some(new_i);
     }
 
     // Image: ![alt](url) -> [Image: alt]
-    if c == '!' && i + 1 < chars.len() && chars[i + 1] == '[' {
-        if let Some(new_i) = try_extract_image(chars, i, processed) {
-            return Some(new_i);
-        }
+    if c == '!'
+        && i + 1 < chars.len()
+        && chars[i + 1] == '['
+        && let Some(new_i) = try_extract_image(chars, i, processed)
+    {
+        return Some(new_i);
     }
 
     // Blockquote marker at start

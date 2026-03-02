@@ -76,14 +76,14 @@ pub fn backup_before_export(
     // Check if the content is identical to the most recent backup (deduplication)
     // We only check against backups that match the target's stem to avoid false positives
     // across different files, though collisions are unlikely with timestamps.
-    if let Some(latest) = get_latest_backup(&history_dir, Some(file_stem))? {
-        if files_are_identical(target_path, &latest.path)? {
-            tracing::debug!(
-                "Skipping backup: identical to latest {}",
-                latest.path.display()
-            );
-            return Ok(());
-        }
+    if let Some(latest) = get_latest_backup(&history_dir, Some(file_stem))?
+        && files_are_identical(target_path, &latest.path)?
+    {
+        tracing::debug!(
+            "Skipping backup: identical to latest {}",
+            latest.path.display()
+        );
+        return Ok(());
     }
 
     fs::copy(target_path, &backup_path).map_err(BeadsError::Io)?;
@@ -162,10 +162,10 @@ pub fn list_backups(history_dir: &Path, filter_prefix: Option<&str>) -> Result<V
             continue;
         };
 
-        if let Some(prefix) = filter_prefix {
-            if !name.starts_with(prefix) {
-                continue;
-            }
+        if let Some(prefix) = filter_prefix
+            && !name.starts_with(prefix)
+        {
+            continue;
         }
 
         let is_jsonl = path

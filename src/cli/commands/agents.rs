@@ -156,10 +156,10 @@ pub fn contains_any_blurb(content: &str) -> bool {
 #[allow(clippy::missing_panics_doc)] // Regex is static and valid
 pub fn get_blurb_version(content: &str) -> u8 {
     let re = Regex::new(r"<!-- br-agent-instructions-v(\d+) -->").unwrap();
-    if let Some(caps) = re.captures(content) {
-        if let Some(m) = caps.get(1) {
-            return m.as_str().parse().unwrap_or(0);
-        }
+    if let Some(caps) = re.captures(content)
+        && let Some(m) = caps.get(1)
+    {
+        return m.as_str().parse().unwrap_or(0);
     }
     0
 }
