@@ -1,4 +1,4 @@
-# `br` Storage Backend Technical Note: `fsqlite` to `rusqlite`
+# Fork Technical Note: `fsqlite` to `rusqlite`, plus local `bx` productization
 
 ## Scope
 
@@ -7,12 +7,13 @@ This document is a fact-based summary of:
 - the storage failures observed in current `beads_rust`
 - the technical findings from direct source inspection
 - the `rusqlite` port work completed in the fork branch `rusqlite-default-backend`
+- the local fork identity changes completed so the branch can be run as `bx`
 - the validation completed so far
 - the remaining work required before treating the fork as fully production-ready
 
 It is written to be shareable with upstream maintainers and reviewers. It
-intentionally excludes local workflow notes, personal context, and speculation
-about motives.
+focuses on technical facts and implementation choices. It still avoids personal
+context and speculation about motives.
 
 ## Executive Summary
 
@@ -20,7 +21,7 @@ The current `beads_rust` runtime depends on `fsqlite` / `frankensqlite`, a
 custom SQLite-style engine implemented in Rust. The fork replaces that runtime
 backend with `rusqlite` (using bundled SQLite) while preserving:
 
-- the `br` CLI surface
+- the existing CLI contract
 - the `.beads/` directory model
 - the SQLite + JSONL architecture
 - the existing schema and JSONL workflow
@@ -28,6 +29,9 @@ backend with `rusqlite` (using bundled SQLite) while preserving:
 The goal of the fork is not to redesign `br`. The goal is to keep the product
 model intact while restoring standard SQLite storage semantics and removing the
 custom storage engine from the runtime path.
+
+For local dogfooding, the fork is also now productized as `bx` so it can be run
+distinctly from any separately installed upstream `br` binary.
 
 ## Observed Problem Classes
 
@@ -133,6 +137,20 @@ The following changes are already implemented in the fork branch
 - `init` now writes a real `issue_prefix` entry into `.beads/config.yaml`
   instead of leaving the prefix commented out
 
+### Local Fork Productization (`bx`)
+
+- Promoted the local fork binary name from `br` to `bx` at the Cargo binary and
+  Clap command layer
+- Re-pointed repository metadata, installer defaults, and release/version check
+  endpoints to `stefanraath3/beads_rust`
+- Updated the built-in AGENTS blurb and local agent-facing documentation so
+  future agents are instructed to use `bx` and are told why the fork exists
+- Updated integration, conformance, and installer harnesses to discover and
+  execute `bx` instead of assuming `br`
+- Verified the installed binary presents itself correctly:
+  - `bx --version` returns `bx 0.1.20`
+  - `bx --help` shows `Usage: bx [OPTIONS] <COMMAND>`
+
 ## Validation Completed
 
 ### Targeted Regression Coverage
@@ -182,14 +200,14 @@ This validates the most important command families for day-to-day use:
 ### Manual Canary Run
 
 A manual disposable-workspace canary run using the built CLI binary completed
-successfully for:
+successfully for the current command surface (these are now run as `bx`):
 
-- `br init`
-- `br create`
-- `br dep add`
-- `br ready --json`
-- `br sync --status`
-- `br --no-db list --json`
+- `bx init`
+- `bx create`
+- `bx dep add`
+- `bx ready --json`
+- `bx sync --status`
+- `bx --no-db list --json`
 
 This provides a direct black-box confirmation that the fork behaves correctly in
 normal CLI use outside the test harness.
@@ -226,18 +244,48 @@ These are no longer storage-corruption risks, but they can still create:
 
 ### 3. Packaging / Distribution For The Fork
 
-For local use, the fork can already be built and installed via:
+The fork is now productized for developer-path installs.
 
-- `cargo build --release`
-- `cargo install --path . --force`
+Validated local install paths:
 
-If the fork is intended for wider sharing, the remaining packaging work is:
+- `cargo install --path . --root ~/.local --force --bin bx`
+- `cargo install --git https://github.com/stefanraath3/beads_rust.git --branch main --force --bin bx`
 
-- update `install.sh` defaults if the installer should target the fork's own
-  release assets
-- publish release artifacts from the fork if binary-install flows are desired
+That is sufficient for day-to-day dogfooding and development use.
+
+The remaining packaging work for release-grade distribution is:
+
+- publish GitHub release artifacts for `bx`
+- verify the updated `install.sh` path against those release artifacts
+- verify `bx upgrade` end-to-end against fork-owned releases
 - update any Homebrew formula or tap strategy only after the release pipeline is
   defined
+
+Until that release pipeline exists, the reliable update path remains
+re-installing from source via `cargo install`.
+
+## Local Fork Operating Model (Non-Upstream)
+
+The fork is now operating with the following branch and remote layout:
+
+- local `main` has been fast-forwarded to the same tip as
+  `rusqlite-default-backend`
+- `origin/main` and `origin/rusqlite-default-backend` both point at the same
+  current fork commit
+- `main` is now the default working branch and practical source of truth
+- `rusqlite-default-backend` is retained as a traceability branch for the
+  storage-port line of work
+- an `upstream` remote now tracks `Dicklesworthstone/beads_rust` so future
+  upstream changes can be fetched and selectively merged
+
+This means the fork no longer depends on a local alias workaround. The intended
+developer workflow is:
+
+- work in the standalone fork checkout
+- commit on `main`
+- push to `origin/main`
+- re-install `bx` locally when source changes need to be reflected in the
+  installed binary
 
 ## Recommended Upstreamable Shape
 
@@ -261,6 +309,7 @@ stability first.
 Current status is best described as:
 
 - backend port implemented
+- local `bx` fork identity implemented
 - critical regressions covered
 - focused command-matrix slice green
 - manual canary green
