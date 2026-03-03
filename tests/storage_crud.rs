@@ -680,7 +680,10 @@ fn upsert_issue_for_import_preserves_existing_events() {
     storage.create_issue(&issue, "tester").unwrap();
 
     let before = storage.get_events(&issue.id, 50).unwrap();
-    assert!(!before.is_empty(), "create should record at least one event");
+    assert!(
+        !before.is_empty(),
+        "create should record at least one event"
+    );
 
     let mut imported = storage.get_issue(&issue.id).unwrap().expect("issue exists");
     imported.title = "Imported title".to_string();

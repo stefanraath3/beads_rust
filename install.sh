@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# br (beads_rust) installer - Ultra-robust multi-platform installer with beautiful output
+# bx (beads_rust fork) installer - Ultra-robust multi-platform installer with beautiful output
 #
 # One-liner install:
-#   curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh?$(date +%s)" | bash
+#   curl -fsSL "https://raw.githubusercontent.com/stefanraath3/beads_rust/main/install.sh?$(date +%s)" | bash
 #
 # Options:
 #   --version vX.Y.Z   Install specific version (default: latest)
@@ -29,9 +29,9 @@ shopt -s lastpipe 2>/dev/null || true
 # Configuration
 # ============================================================================
 VERSION="${VERSION:-}"
-OWNER="${OWNER:-Dicklesworthstone}"
+OWNER="${OWNER:-stefanraath3}"
 REPO="${REPO:-beads_rust}"
-BINARY_NAME="br"
+BINARY_NAME="bx"
 DEST_DEFAULT="$HOME/.local/bin"
 DEST="${DEST:-$DEST_DEFAULT}"
 EASY=0
@@ -42,7 +42,7 @@ UNINSTALL=0
 CHECKSUM="${CHECKSUM:-}"
 CHECKSUM_URL="${CHECKSUM_URL:-}"
 ARTIFACT_URL="${ARTIFACT_URL:-}"
-LOCK_FILE="/tmp/br-install.lock"
+LOCK_FILE="/tmp/bx-install.lock"
 SYSTEM=0
 NO_GUM=0
 SKIP_SKILLS=0
@@ -335,7 +335,7 @@ usage() {
 
         gum style --foreground 214 --bold "EXAMPLES"
         gum style --foreground 39 "  # Default install"
-        echo "  curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh | bash"
+        echo "  curl -fsSL https://raw.githubusercontent.com/stefanraath3/beads_rust/main/install.sh | bash"
         echo ""
         gum style --foreground 39 "  # System install with auto PATH"
         echo "  curl -fsSL .../install.sh | sudo bash -s -- --system --easy-mode"
@@ -359,10 +359,10 @@ usage() {
 
     else
         cat <<'EOF'
-br installer - Install beads_rust (br) CLI tool
+bx installer - Install beads_rust fork (bx) CLI tool
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/stefanraath3/beads_rust/main/install.sh | bash
   curl -fsSL .../install.sh | bash -s -- [OPTIONS]
 
 Options:
@@ -1175,38 +1175,38 @@ print_summary() {
         echo ""
 
         if [[ ":$PATH:" != *":$DEST:"* ]]; then
-            gum style --foreground 214 "To use br, restart your shell or run:"
+            gum style --foreground 214 "To use bx, restart your shell or run:"
             gum style --foreground 39 "  export PATH=\"$DEST:\$PATH\""
             echo ""
         fi
 
         gum style --foreground 214 --bold "Quick Start"
-        gum style --faint "  br init            Initialize a workspace"
-        gum style --faint "  br create          Create an issue"
-        gum style --faint "  br list            List issues"
-        gum style --faint "  br ready           Show ready work"
-        gum style --faint "  br --help          Full help"
+        gum style --faint "  bx init            Initialize a workspace"
+        gum style --faint "  bx create          Create an issue"
+        gum style --faint "  bx list            List issues"
+        gum style --faint "  bx ready           Show ready work"
+        gum style --faint "  bx --help          Full help"
         echo ""
     else
         echo ""
-        log_success "br installed successfully!"
+        log_success "bx installed successfully!"
         echo ""
         echo "  Version:  $installed_version"
         echo "  Location: $DEST/$BINARY_NAME"
         echo ""
 
         if [[ ":$PATH:" != *":$DEST:"* ]]; then
-            echo "  To use br, restart your shell or run:"
+            echo "  To use bx, restart your shell or run:"
             echo "    export PATH=\"$DEST:\$PATH\""
             echo ""
         fi
 
         echo "  Quick Start:"
-        echo "    br init            Initialize a workspace"
-        echo "    br create          Create an issue"
-        echo "    br list            List issues"
-        echo "    br ready           Show ready work"
-        echo "    br --help          Full help"
+        echo "    bx init            Initialize a workspace"
+        echo "    bx create          Create an issue"
+        echo "    bx list            List issues"
+        echo "    bx ready           Show ready work"
+        echo "    bx --help          Full help"
         echo ""
     fi
 }

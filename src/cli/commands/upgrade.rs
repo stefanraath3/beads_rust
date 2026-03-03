@@ -1,6 +1,6 @@
 //! Upgrade command implementation.
 //!
-//! Enables br to update itself to the latest version using the `self_update` crate.
+//! Enables bx to update itself to the latest version using the `self_update` crate.
 
 use crate::cli::UpgradeArgs;
 use crate::error::{BeadsError, Result};
@@ -13,13 +13,13 @@ use serde::Serialize;
 use std::env;
 
 /// Repo owner for GitHub releases.
-const REPO_OWNER: &str = "Dicklesworthstone";
+const REPO_OWNER: &str = "stefanraath3";
 
 /// Repo name for GitHub releases.
 const REPO_NAME: &str = "beads_rust";
 
 /// Binary name.
-const BIN_NAME: &str = "br";
+const BIN_NAME: &str = "bx";
 
 /// Update check result.
 #[derive(Serialize)]
@@ -89,7 +89,7 @@ fn execute_check(current_version: &str, ctx: &OutputContext) -> Result<()> {
         println!("Latest version:  {latest_version}");
 
         if update_available {
-            println!("\n\u{2191} Update available! Run `br upgrade` to install.");
+            println!("\n\u{2191} Update available! Run `bx upgrade` to install.");
         } else {
             println!("\n\u{2713} Already up to date");
         }
@@ -375,7 +375,7 @@ fn render_check_rich(result: &UpdateCheckResult, ctx: &OutputContext) {
         content.append_styled("↑ ", theme.success.clone());
         content.append_styled("Update available! ", theme.success.clone());
         content.append("Run ");
-        content.append_styled("`br upgrade`", theme.accent.clone());
+        content.append_styled("`bx upgrade`", theme.accent.clone());
         content.append(" to install.\n");
     } else {
         content.append_styled("✓ ", theme.success.clone());

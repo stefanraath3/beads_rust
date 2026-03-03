@@ -649,7 +649,7 @@ fn csv_fields_completer(current: &OsStr) -> Vec<CompletionCandidate> {
 
 /// Agent-first issue tracker (`SQLite` + JSONL)
 #[derive(Parser, Debug)]
-#[command(name = "br", author, version, about, long_about = None)]
+#[command(name = "bx", author, version, about, long_about = None)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
     #[command(subcommand)]

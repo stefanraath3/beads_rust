@@ -70,36 +70,36 @@ impl DiscoveredBinaries {
     }
 }
 
-/// Discover br binary (from cargo build).
+/// Discover bx binary (from cargo build).
 fn discover_br() -> Result<BinaryVersion, String> {
-    // First check if BR_BINARY env var is set
-    if let Ok(br_path) = std::env::var("BR_BINARY") {
+    // First check if BX_BINARY env var is set
+    if let Ok(br_path) = std::env::var("BX_BINARY") {
         let path = PathBuf::from(&br_path);
         if path.exists() {
-            return probe_binary("br", &path);
+            return probe_binary("bx", &path);
         }
-        return Err(format!("BR_BINARY={br_path} does not exist"));
+        return Err(format!("BX_BINARY={br_path} does not exist"));
     }
 
     // Try cargo-built binary
-    let cargo_bin = assert_cmd::cargo::cargo_bin!("br");
+    let cargo_bin = assert_cmd::cargo::cargo_bin!("bx");
     if cargo_bin.exists() {
-        return probe_binary("br", cargo_bin);
+        return probe_binary("bx", cargo_bin);
     }
 
     // Try release binary
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let release_bin = manifest_dir.join("target/release/br");
+    let release_bin = manifest_dir.join("target/release/bx");
     if release_bin.exists() {
-        return probe_binary("br", &release_bin);
+        return probe_binary("bx", &release_bin);
     }
 
     // Try PATH
-    if let Some(path) = which("br") {
-        return probe_binary("br", &path);
+    if let Some(path) = which("bx") {
+        return probe_binary("bx", &path);
     }
 
-    Err("br binary not found. Build with `cargo build` first.".to_string())
+    Err("bx binary not found. Build with `cargo build` first.".to_string())
 }
 
 /// Discover bd binary (Go beads).

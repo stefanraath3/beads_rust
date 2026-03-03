@@ -1929,8 +1929,7 @@ impl SqliteStorage {
             .filter_map(|row| {
                 let epic_id = row.get(0).and_then(SqliteValue::as_text)?.to_string();
                 let total = usize::try_from(row.get(1).and_then(SqliteValue::as_integer)?).ok()?;
-                let closed =
-                    usize::try_from(row.get(2).and_then(SqliteValue::as_integer)?).ok()?;
+                let closed = usize::try_from(row.get(2).and_then(SqliteValue::as_integer)?).ok()?;
                 Some((epic_id, (total, closed)))
             })
             .collect())
@@ -5196,7 +5195,10 @@ mod tests {
 
         storage.rebuild_blocked_cache(true).unwrap();
 
-        assert_eq!(blocked_count(&storage), chain_len as i64);
+        assert_eq!(
+            blocked_count(&storage),
+            i64::try_from(chain_len).unwrap_or(-1)
+        );
 
         let ready = storage
             .get_ready_issues(&ReadyFilters::default(), ReadySortPolicy::default())

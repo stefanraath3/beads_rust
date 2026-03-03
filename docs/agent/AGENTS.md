@@ -2,6 +2,8 @@
 
 This folder is a thin, agent-first map into the existing `br` documentation set.
 
+In this fork, use `bx` for all issue-tracker commands. The fork standardizes on `rusqlite` after `fsqlite` / `frankensqlite` produced real storage failures, including `cursor must be on a leaf to delete`.
+
 If you are an AI coding agent working in this repo, start here:
 
 - Safety + workflow rules: `AGENTS.md` (repo root)

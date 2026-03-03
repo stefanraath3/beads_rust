@@ -272,7 +272,7 @@ where
     let start = Instant::now();
 
     let output = if binary == "br" {
-        let br_bin = assert_cmd::cargo::cargo_bin!("br");
+        let br_bin = assert_cmd::cargo::cargo_bin!("bx");
         std::process::Command::new(&br_bin)
             .current_dir(cwd)
             .args(args)
@@ -372,7 +372,7 @@ fn measure_rss(binary: &str, cwd: &Path, args: &[&str]) -> MemoryStats {
     }
 
     let program = if binary == "br" {
-        assert_cmd::cargo::cargo_bin!("br").to_path_buf()
+        assert_cmd::cargo::cargo_bin!("bx").to_path_buf()
     } else {
         PathBuf::from("bd")
     };

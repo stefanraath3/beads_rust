@@ -123,7 +123,7 @@ fn binaries_available() -> bool {
                 std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
             PathBuf::from(manifest_dir).join("target")
         });
-    let br_path = target_dir.join("release").join("br");
+    let br_path = target_dir.join("release").join("bx");
     let br_exists = br_path.exists();
 
     // Check bd is available
@@ -156,7 +156,7 @@ fn run_binary(binary: &str, cwd: &PathBuf, args: &[&str]) -> CmdOutput {
                     std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
                 PathBuf::from(manifest_dir).join("target")
             });
-        target_dir.join("release").join("br")
+        target_dir.join("release").join("bx")
     } else {
         // Use system bd
         PathBuf::from(binary)

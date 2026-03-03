@@ -151,7 +151,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("br"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("bx"));
     cmd.current_dir(cwd);
     cmd.args(args);
     cmd.env("NO_COLOR", "1");

@@ -20,7 +20,7 @@ use tempfile::TempDir;
 use walkdir::WalkDir;
 
 fn br_binary_path() -> PathBuf {
-    assert_cmd::cargo::cargo_bin!("br").to_path_buf()
+    assert_cmd::cargo::cargo_bin!("bx").to_path_buf()
 }
 
 /// Get the path to the bd (Go beads) binary.

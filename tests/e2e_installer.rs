@@ -354,7 +354,7 @@ fn e2e_installer_checksum_mismatch_fails() {
     // Both are acceptable - we just don't want silent success with bad checksum
     if output.status.success() {
         // If it somehow succeeded, verify the binary wasn't installed
-        let binary_path = temp.path().join("bin").join("br");
+        let binary_path = temp.path().join("bin").join("bx");
         if binary_path.exists() {
             // If binary exists, it should be because checksum was skipped (no release found)
             // In production with --checksum flag, this would be a test failure
@@ -381,7 +381,7 @@ fn e2e_installer_idempotent_runs_twice() {
     fs::create_dir_all(&dest).expect("create dest");
 
     // Create a fake "br" binary to simulate existing installation
-    let fake_binary = dest.join("br");
+    let fake_binary = dest.join("bx");
     fs::write(&fake_binary, "#!/bin/sh\necho 'br 0.0.1'").expect("write fake");
     #[cfg(unix)]
     {
@@ -478,7 +478,7 @@ fn e2e_installer_uninstall_removes_binary() {
     fs::create_dir_all(&dest).expect("create dest");
 
     // Create a fake binary
-    let binary_path = dest.join("br");
+    let binary_path = dest.join("bx");
     fs::write(&binary_path, "#!/bin/sh\necho 'br 0.0.1'").expect("write fake");
     #[cfg(unix)]
     {
@@ -605,7 +605,7 @@ fn e2e_installer_full_install_and_verify() {
 
     if output.status.success() {
         // Verify binary exists and works
-        let binary_path = dest.join("br");
+        let binary_path = dest.join("bx");
         assert!(binary_path.exists(), "Binary should exist after install");
 
         // Run the installed binary

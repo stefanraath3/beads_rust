@@ -406,7 +406,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("br"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("bx"));
     cmd.current_dir(cwd);
     cmd.args(args);
     cmd.env("NO_COLOR", "1");
@@ -904,7 +904,7 @@ fn benchmark_memory_usage_1000() -> Option<MemoryComparison> {
     let workspace = BenchmarkWorkspace::new();
     populate_workspace(&workspace, 1000);
 
-    let br_bin = assert_cmd::cargo::cargo_bin!("br");
+    let br_bin = assert_cmd::cargo::cargo_bin!("bx");
     let br_stats = time_binary_with_rss(&br_bin, &workspace.br_root, &["list", "--json"])
         .unwrap_or(MemoryStats { max_rss_kb: None });
 
@@ -930,7 +930,7 @@ fn benchmark_memory_sync_flush_1000() -> Option<MemoryComparison> {
     let workspace = BenchmarkWorkspace::new();
     populate_workspace(&workspace, 1000);
 
-    let br_bin = assert_cmd::cargo::cargo_bin!("br");
+    let br_bin = assert_cmd::cargo::cargo_bin!("bx");
     let br_stats = time_binary_with_rss(&br_bin, &workspace.br_root, &["sync", "--flush-only"])
         .unwrap_or(MemoryStats { max_rss_kb: None });
 
@@ -967,7 +967,7 @@ fn benchmark_memory_sync_import_1000() -> Option<MemoryComparison> {
     let bd_jsonl_path = bd_workspace.bd_root.join(".beads").join("issues.jsonl");
     fs::write(&bd_jsonl_path, &jsonl_data).expect("write bd issues.jsonl");
 
-    let br_bin = assert_cmd::cargo::cargo_bin!("br");
+    let br_bin = assert_cmd::cargo::cargo_bin!("bx");
     let br_stats = time_binary_with_rss(&br_bin, &br_workspace.br_root, &["sync", "--import-only"])
         .unwrap_or(MemoryStats { max_rss_kb: None });
 

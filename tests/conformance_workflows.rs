@@ -459,7 +459,7 @@ impl WorkflowWorkspace {
 
     /// Run br command.
     pub fn run_br(&self, args: &[&str]) -> CmdOutput {
-        let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin!("br"));
+        let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin!("bx"));
         cmd.current_dir(&self.br_root);
         cmd.args(args);
         cmd.env("NO_COLOR", "1");

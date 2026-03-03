@@ -227,9 +227,9 @@ fn execute_update_check(current_version: &str, ctx: &OutputContext) {
         }));
     } else if update_available {
         println!("Update available: {current_version} → {latest}");
-        println!("Run `br upgrade` to update.");
+        println!("Run `bx upgrade` to update.");
     } else {
-        println!("br {current_version} is up to date (latest: {latest})");
+        println!("bx {current_version} is up to date (latest: {latest})");
     }
 
     if update_available {
@@ -242,11 +242,11 @@ fn fetch_latest_version() -> Result<String> {
     use std::io::Read;
 
     // Use GitHub API to get latest release
-    let url = "https://api.github.com/repos/Dicklesworthstone/beads_rust/releases/latest";
+    let url = "https://api.github.com/repos/stefanraath3/beads_rust/releases/latest";
 
     // Build request with User-Agent (required by GitHub)
     let mut handle = std::process::Command::new("curl")
-        .args(["-sS", "-H", "User-Agent: br-cli", url])
+        .args(["-sS", "-H", "User-Agent: bx-cli", url])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()

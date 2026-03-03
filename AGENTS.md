@@ -2,6 +2,12 @@
 
 > Guidelines for AI coding agents working in this Rust codebase.
 
+## Fork Command Override
+
+Use `bx` for all issue-tracker CLI work in this fork, even where older docs or examples still mention `br`.
+
+This fork exists because the storage backend was moved to `rusqlite` after `fsqlite` / `frankensqlite` caused real failures, including `cursor must be on a leaf to delete`.
+
 ---
 
 ## RULE 0 - THE FUNDAMENTAL OVERRIDE PREROGATIVE
@@ -717,9 +723,9 @@ Returns structured results with file paths, line ranges, and extracted code snip
 
 ## Beads Workflow Integration
 
-This project uses [beads_rust](https://github.com/Dicklesworthstone/beads_rust) (`br`) for issue tracking. Issues are stored in `.beads/` and tracked in git.
+This project uses the local [beads_rust fork](https://github.com/stefanraath3/beads_rust) (`bx`) for issue tracking. Issues are stored in `.beads/` and tracked in git.
 
-**Important:** `br` is non-invasive—it NEVER executes git commands. After `br sync --flush-only`, you must manually run `git add .beads/ && git commit`.
+**Important:** `bx` is non-invasive—it NEVER executes git commands. After `bx sync --flush-only`, you must manually run `git add .beads/ && git commit`.
 
 ### Essential Commands
 
@@ -728,30 +734,30 @@ This project uses [beads_rust](https://github.com/Dicklesworthstone/beads_rust) 
 bv
 
 # CLI commands for agents (use these instead)
-br ready              # Show issues ready to work (no blockers)
-br list --status=open # All open issues
-br show <id>          # Full issue details with dependencies
-br create --title="..." --type=task --priority=2
-br update <id> --status=in_progress
-br close <id> --reason "Completed"
-br close <id1> <id2>  # Close multiple issues at once
-br sync --flush-only  # Export to JSONL (NO git operations)
+bx ready              # Show issues ready to work (no blockers)
+bx list --status=open # All open issues
+bx show <id>          # Full issue details with dependencies
+bx create --title="..." --type=task --priority=2
+bx update <id> --status=in_progress
+bx close <id> --reason "Completed"
+bx close <id1> <id2>  # Close multiple issues at once
+bx sync --flush-only  # Export to JSONL (NO git operations)
 ```
 
 ### Workflow Pattern
 
-1. **Start**: Run `br ready` to find actionable work
-2. **Claim**: Use `br update <id> --status=in_progress`
+1. **Start**: Run `bx ready` to find actionable work
+2. **Claim**: Use `bx update <id> --status=in_progress`
 3. **Work**: Implement the task
-4. **Complete**: Use `br close <id>`
-5. **Sync**: Run `br sync --flush-only` then manually commit
+4. **Complete**: Use `bx close <id>`
+5. **Sync**: Run `bx sync --flush-only` then manually commit
 
 ### Key Concepts
 
-- **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.
+- **Dependencies**: Issues can block other issues. `bx ready` shows only unblocked work.
 - **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers, not words)
 - **Types**: task, bug, feature, epic, question, docs
-- **Blocking**: `br dep add <issue> <depends-on>` to add dependencies
+- **Blocking**: `bx dep add <issue> <depends-on>` to add dependencies
 
 ### Session Protocol
 
@@ -760,7 +766,7 @@ br sync --flush-only  # Export to JSONL (NO git operations)
 ```bash
 git status              # Check what changed
 git add <files>         # Stage code changes
-br sync --flush-only    # Export beads to JSONL
+bx sync --flush-only    # Export beads to JSONL
 git add .beads/         # Stage beads changes
 git commit -m "..."     # Commit everything together
 git push                # Push to remote
@@ -768,11 +774,11 @@ git push                # Push to remote
 
 ### Best Practices
 
-- Check `br ready` at session start to find available work
+- Check `bx ready` at session start to find available work
 - Update status as you work (in_progress → closed)
-- Create new issues with `br create` when you discover tasks
+- Create new issues with `bx create` when you discover tasks
 - Use descriptive titles and set appropriate priority/type
-- Always `br sync --flush-only && git add .beads/` before ending session
+- Always `bx sync --flush-only && git add .beads/` before ending session
 
 <!-- end-bv-agent-instructions -->
 
@@ -785,7 +791,7 @@ git push                # Push to remote
 1. **File issues for remaining work** - Create issues for anything that needs follow-up
 2. **Run quality gates** (if code changed) - Tests, linters, builds
 3. **Update issue status** - Close finished work, update in-progress items
-4. **Sync beads** - `br sync --flush-only` to export to JSONL
+4. **Sync beads** - `bx sync --flush-only` to export to JSONL
 5. **Hand off** - Provide context for next session
 
 

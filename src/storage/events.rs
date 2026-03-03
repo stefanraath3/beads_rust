@@ -510,8 +510,8 @@ pub fn init_events_table(conn: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::schema::execute_batch;
     use crate::storage::db::Connection;
+    use crate::storage::schema::execute_batch;
 
     fn setup_test_db() -> Connection {
         let conn = Connection::open(":memory:").expect("Failed to create in-memory database");

@@ -87,6 +87,7 @@ pub struct PreparedStatement {
     sql: String,
 }
 
+#[allow(clippy::missing_errors_doc)]
 impl Connection {
     pub fn open(path: impl Into<String>) -> std::result::Result<Self, DbError> {
         let path = path.into();
@@ -150,6 +151,7 @@ impl Connection {
     }
 }
 
+#[allow(clippy::missing_errors_doc)]
 impl PreparedStatement {
     pub fn query(&self) -> std::result::Result<Vec<Row>, DbError> {
         query_all(&self.conn, &self.sql, &[])
@@ -335,7 +337,8 @@ fn execute_count(
     }
 
     let raw_params = to_backend_values(params);
-    stmt.execute(params_from_iter(raw_params)).map_err(DbError::from)
+    stmt.execute(params_from_iter(raw_params))
+        .map_err(DbError::from)
 }
 
 fn row_from_rusqlite(row: &rusqlite::Row<'_>) -> std::result::Result<Row, DbError> {

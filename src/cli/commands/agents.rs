@@ -13,10 +13,10 @@ use std::path::{Path, PathBuf};
 
 /// Current version of the agent instructions blurb.
 /// Increment this when making breaking changes to the blurb format.
-pub const BLURB_VERSION: u8 = 1;
+pub const BLURB_VERSION: u8 = 2;
 
 /// Start marker for the blurb (includes version).
-pub const BLURB_START_MARKER: &str = "<!-- br-agent-instructions-v1 -->";
+pub const BLURB_START_MARKER: &str = "<!-- br-agent-instructions-v2 -->";
 
 /// End marker for the blurb.
 pub const BLURB_END_MARKER: &str = "<!-- end-br-agent-instructions -->";
@@ -25,50 +25,52 @@ pub const BLURB_END_MARKER: &str = "<!-- end-br-agent-instructions -->";
 pub const SUPPORTED_AGENT_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "agents.md", "claude.md"];
 
 /// The agent instructions blurb to append to AGENTS.md files.
-pub const AGENT_BLURB: &str = r#"<!-- br-agent-instructions-v1 -->
+pub const AGENT_BLURB: &str = r#"<!-- br-agent-instructions-v2 -->
 
 ---
 
 ## Beads Workflow Integration
 
-This project uses [beads_rust](https://github.com/Dicklesworthstone/beads_rust) (`br`/`bd`) for issue tracking. Issues are stored in `.beads/` and tracked in git.
+This project uses the local [beads_rust fork](https://github.com/stefanraath3/beads_rust) (`bx`) for issue tracking. Issues are stored in `.beads/` and tracked in git.
+
+This fork standardizes on `bx` because it carries the `rusqlite` storage backend that replaced `fsqlite` / `frankensqlite` after real failures, including `cursor must be on a leaf to delete`.
 
 ### Essential Commands
 
 ```bash
 # View ready issues (unblocked, not deferred)
-br ready              # or: bd ready
+bx ready
 
 # List and search
-br list --status=open # All open issues
-br show <id>          # Full issue details with dependencies
-br search "keyword"   # Full-text search
+bx list --status=open # All open issues
+bx show <id>          # Full issue details with dependencies
+bx search "keyword"   # Full-text search
 
 # Create and update
-br create --title="..." --description="..." --type=task --priority=2
-br update <id> --status=in_progress
-br close <id> --reason="Completed"
-br close <id1> <id2>  # Close multiple issues at once
+bx create --title="..." --description="..." --type=task --priority=2
+bx update <id> --status=in_progress
+bx close <id> --reason="Completed"
+bx close <id1> <id2>  # Close multiple issues at once
 
 # Sync with git
-br sync --flush-only  # Export DB to JSONL
-br sync --status      # Check sync status
+bx sync --flush-only  # Export DB to JSONL
+bx sync --status      # Check sync status
 ```
 
 ### Workflow Pattern
 
-1. **Start**: Run `br ready` to find actionable work
-2. **Claim**: Use `br update <id> --status=in_progress`
+1. **Start**: Run `bx ready` to find actionable work
+2. **Claim**: Use `bx update <id> --status=in_progress`
 3. **Work**: Implement the task
-4. **Complete**: Use `br close <id>`
-5. **Sync**: Always run `br sync --flush-only` at session end
+4. **Complete**: Use `bx close <id>`
+5. **Sync**: Always run `bx sync --flush-only` at session end
 
 ### Key Concepts
 
-- **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.
+- **Dependencies**: Issues can block other issues. `bx ready` shows only unblocked work.
 - **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers 0-4, not words)
 - **Types**: task, bug, feature, epic, chore, docs, question
-- **Blocking**: `br dep add <issue> <depends-on>` to add dependencies
+- **Blocking**: `bx dep add <issue> <depends-on>` to add dependencies
 
 ### Session Protocol
 
@@ -77,16 +79,16 @@ br sync --status      # Check sync status
 ```bash
 git status              # Check what changed
 git add <files>         # Stage code changes
-br sync --flush-only    # Export beads changes to JSONL
+bx sync --flush-only    # Export beads changes to JSONL
 git commit -m "..."     # Commit everything
 git push                # Push to remote
 ```
 
 ### Best Practices
 
-- Check `br ready` at session start to find available work
+- Check `bx ready` at session start to find available work
 - Update status as you work (in_progress → closed)
-- Create new issues with `br create` when you discover tasks
+- Create new issues with `bx create` when you discover tasks
 - Use descriptive titles and set appropriate priority/type
 - Always sync before ending session
 
@@ -1095,7 +1097,7 @@ mod tests {
 
     #[test]
     fn test_contains_blurb() {
-        let content = "Some text\n<!-- br-agent-instructions-v1 -->\nblurb\n<!-- end-br-agent-instructions -->";
+        let content = "Some text\n<!-- br-agent-instructions-v2 -->\nblurb\n<!-- end-br-agent-instructions -->";
         assert!(contains_blurb(content));
         assert!(!contains_legacy_blurb(content));
     }
@@ -1110,7 +1112,7 @@ mod tests {
 
     #[test]
     fn test_get_blurb_version() {
-        assert_eq!(get_blurb_version("<!-- br-agent-instructions-v1 -->"), 1);
+        assert_eq!(get_blurb_version("<!-- br-agent-instructions-v2 -->"), 2);
         assert_eq!(get_blurb_version("<!-- br-agent-instructions-v2 -->"), 2);
         assert_eq!(get_blurb_version("no marker"), 0);
     }
@@ -1143,7 +1145,7 @@ mod tests {
         let detection = detect_agent_file(temp_dir.path());
         assert!(detection.found());
         assert!(detection.has_blurb);
-        assert_eq!(detection.blurb_version, 1);
+        assert_eq!(detection.blurb_version, 2);
         assert!(!detection.needs_blurb());
         assert!(!detection.needs_upgrade());
     }
@@ -1172,7 +1174,7 @@ mod tests {
         let legacy_content = "# Agents\n\n<!-- bv-agent-instructions-v1 -->\nold\n<!-- end-bv-agent-instructions -->\n";
         let result = update_blurb(legacy_content);
         assert!(!result.contains("bv-agent-instructions"));
-        assert!(result.contains("br-agent-instructions-v1"));
+        assert!(result.contains("br-agent-instructions-v2"));
     }
 
     #[test]
