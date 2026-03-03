@@ -298,8 +298,15 @@ fn e2e_no_db_read_write() {
     assert!(!issues.is_empty(), "seed jsonl empty");
 
     let now = Utc::now().to_rfc3339();
+    let seed_id = issues[0]["id"]
+        .as_str()
+        .expect("seed issue should have an id");
+    let (prefix, _) = seed_id
+        .split_once('-')
+        .expect("seed issue should use prefix-id format");
+    let injected_id = format!("{prefix}-nodb1");
     let mut injected = issues[0].clone();
-    injected["id"] = Value::String("bd-nodb1".to_string());
+    injected["id"] = Value::String(injected_id.clone());
     injected["title"] = Value::String("Injected no-db".to_string());
     injected["created_at"] = Value::String(now.clone());
     injected["updated_at"] = Value::String(now);
@@ -320,7 +327,7 @@ fn e2e_no_db_read_write() {
     let list_payload = extract_json_payload(&list.stdout);
     let list_json: Vec<Value> = serde_json::from_str(&list_payload).expect("list json");
     assert!(
-        list_json.iter().any(|item| item["id"] == "bd-nodb1"),
+        list_json.iter().any(|item| item["id"] == injected_id),
         "no-db list missing injected issue"
     );
 

@@ -17,6 +17,7 @@ mod structured;
 pub use context::{OptionExt, ResultExt};
 pub use structured::{ErrorCode, StructuredError};
 
+use crate::storage::db::DbError;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -41,7 +42,7 @@ pub enum BeadsError {
 
     /// `SQLite` database error.
     #[error("Database error: {0}")]
-    Database(#[from] fsqlite_error::FrankenError),
+    Database(#[from] DbError),
 
     // === Issue Errors ===
     /// Issue with the specified ID was not found.
@@ -305,8 +306,7 @@ mod tests {
         let recoverable = BeadsError::NotInitialized;
         assert!(recoverable.is_user_recoverable());
 
-        let not_recoverable =
-            BeadsError::Database(fsqlite_error::FrankenError::Internal("test".to_string()));
+        let not_recoverable = BeadsError::Database(DbError::internal("test"));
         assert!(!not_recoverable.is_user_recoverable());
     }
 

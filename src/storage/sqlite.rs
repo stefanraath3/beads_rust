@@ -3,11 +3,10 @@
 use crate::error::{BeadsError, Result};
 use crate::format::{IssueDetails, IssueWithDependencyMetadata};
 use crate::model::{Comment, DependencyType, Event, EventType, Issue, IssueType, Priority, Status};
+use crate::storage::db::{Connection, DbError, Row, SqliteValue};
 use crate::storage::events::get_events;
 use crate::storage::schema::{CURRENT_SCHEMA_VERSION, apply_schema};
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
-use fsqlite::Connection;
-use fsqlite_types::SqliteValue;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -222,15 +221,13 @@ impl SqliteStorage {
                         )?;
                     }
 
-                    // Mark dirty — DELETE + INSERT instead of INSERT OR
-                    // REPLACE because fsqlite lacks UNIQUE enforcement.
+                    // Mark dirty via an atomic upsert keyed by issue_id.
                     for id in &ctx.dirty_ids {
                         self.conn.execute_with_params(
-                            "DELETE FROM dirty_issues WHERE issue_id = ?",
-                            &[SqliteValue::from(id.as_str())],
-                        )?;
-                        self.conn.execute_with_params(
-                            "INSERT INTO dirty_issues (issue_id, marked_at) VALUES (?, ?)",
+                            "INSERT INTO dirty_issues (issue_id, marked_at)
+                             VALUES (?, ?)
+                             ON CONFLICT(issue_id) DO UPDATE
+                             SET marked_at = excluded.marked_at",
                             &[
                                 SqliteValue::from(id.as_str()),
                                 SqliteValue::from(Utc::now().to_rfc3339()),
@@ -282,20 +279,6 @@ impl SqliteStorage {
     #[allow(clippy::too_many_lines)]
     pub fn create_issue(&mut self, issue: &Issue, actor: &str) -> Result<()> {
         self.mutate("create_issue", actor, |conn, ctx| {
-            // Explicit duplicate check since fsqlite does not enforce
-            // UNIQUE constraints on non-rowid columns.
-            let existing = conn.query_with_params(
-                "SELECT id FROM issues WHERE id = ?",
-                &[SqliteValue::from(issue.id.as_str())],
-            )?;
-            if !existing.is_empty() {
-                return Err(BeadsError::Database(
-                    fsqlite_error::FrankenError::UniqueViolation {
-                        columns: format!("issues.id = {}", issue.id),
-                    },
-                ));
-            }
-
             let status_str = issue.status.as_str();
             let issue_type_str = issue.issue_type.as_str();
             let created_at_str = issue.created_at.to_rfc3339();
@@ -831,7 +814,7 @@ impl SqliteStorage {
             .query_row_with_params(sql, &[SqliteValue::from(id)])
         {
             Ok(row) => Ok(Some(Self::issue_from_row(&row)?)),
-            Err(fsqlite_error::FrankenError::QueryReturnedNoRows) => Ok(None),
+            Err(e) if e.is_query_returned_no_rows() => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
@@ -1478,8 +1461,6 @@ impl SqliteStorage {
 
     #[allow(clippy::too_many_lines)]
     fn rebuild_blocked_cache_impl(conn: &Connection) -> Result<usize> {
-        const MAX_DEPTH: i32 = 50;
-
         // Clear existing cache
         conn.execute("DELETE FROM blocked_issues_cache")?;
 
@@ -1576,17 +1557,20 @@ impl SqliteStorage {
             }
         }
 
-        // Now handle transitive blocking via parent-child relationships
-        let mut depth = 0;
+        // Now handle transitive blocking via parent-child relationships.
+        // This propagation is monotonic: each pass can only add issues that
+        // are not already present in blocked_issues_cache, so it should
+        // converge once no new descendants remain. Keep an explicit bound based
+        // on issue count so we fail loudly instead of silently truncating.
+        let total_issue_count = conn
+            .query_row("SELECT count(*) FROM issues")?
+            .get(0)
+            .and_then(SqliteValue::as_integer)
+            .and_then(|count| usize::try_from(count).ok())
+            .unwrap_or(0);
+        let max_iterations = total_issue_count.saturating_add(1);
+        let mut iterations = 0usize;
         loop {
-            if depth >= MAX_DEPTH {
-                tracing::warn!(
-                    "Transitive blocked cache rebuild hit max depth {}",
-                    MAX_DEPTH
-                );
-                break;
-            }
-
             let newly_blocked: Vec<(String, String)> = {
                 let rows = conn.query(
                     r"SELECT DISTINCT d.issue_id, d.depends_on_id
@@ -1607,6 +1591,13 @@ impl SqliteStorage {
 
             if newly_blocked.is_empty() {
                 break;
+            }
+
+            iterations += 1;
+            if iterations > max_iterations {
+                return Err(BeadsError::Database(DbError::internal(format!(
+                    "blocked cache rebuild exceeded convergence bound after {iterations} propagation passes (max {max_iterations}, total issues {total_issue_count})"
+                ))));
             }
 
             let mut issue_blockers: std::collections::HashMap<String, Vec<String>> =
@@ -1632,8 +1623,6 @@ impl SqliteStorage {
                 )?;
                 count += 1;
             }
-
-            depth += 1;
         }
 
         tracing::debug!(blocked_count = count, "Rebuilt blocked issues cache");
@@ -1922,32 +1911,29 @@ impl SqliteStorage {
     /// Returns an error if the database query fails.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn get_epic_counts(&self) -> Result<std::collections::HashMap<String, (usize, usize)>> {
-        // Fetch raw rows and aggregate in Rust to avoid SUM(CASE WHEN ... THEN 1 ELSE 0 END)
-        // which crashes fsqlite (it doesn't support non-column arguments in aggregate functions).
         let rows = self.conn.query(
             "SELECT
                 d.depends_on_id AS epic_id,
-                i.status
+                COUNT(*) AS total_children,
+                SUM(CASE
+                    WHEN i.status = 'closed' OR i.status = 'tombstone' THEN 1
+                    ELSE 0
+                END) AS closed_children
              FROM dependencies d
              JOIN issues i ON d.issue_id = i.id
-             WHERE d.type = 'parent-child'",
+             WHERE d.type = 'parent-child'
+             GROUP BY d.depends_on_id",
         )?;
-        let mut counts: std::collections::HashMap<String, (usize, usize)> =
-            std::collections::HashMap::new();
-        for row in &rows {
-            let epic_id = row
-                .get(0)
-                .and_then(SqliteValue::as_text)
-                .unwrap_or("")
-                .to_string();
-            let status = row.get(1).and_then(SqliteValue::as_text).unwrap_or("");
-            let entry = counts.entry(epic_id).or_insert((0, 0));
-            entry.0 += 1; // total
-            if status == "closed" || status == "tombstone" {
-                entry.1 += 1; // closed
-            }
-        }
-        Ok(counts)
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                let epic_id = row.get(0).and_then(SqliteValue::as_text)?.to_string();
+                let total = usize::try_from(row.get(1).and_then(SqliteValue::as_integer)?).ok()?;
+                let closed =
+                    usize::try_from(row.get(2).and_then(SqliteValue::as_integer)?).ok()?;
+                Some((epic_id, (total, closed)))
+            })
+            .collect())
     }
 
     /// Add a dependency between issues.
@@ -2691,7 +2677,7 @@ impl SqliteStorage {
             &[SqliteValue::from(issue_id)],
         ) {
             Ok(row) => Ok(row.get(0).and_then(SqliteValue::as_text).map(String::from)),
-            Err(fsqlite_error::FrankenError::QueryReturnedNoRows) => Ok(None),
+            Err(e) if e.is_query_returned_no_rows() => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
@@ -2926,7 +2912,7 @@ impl SqliteStorage {
             &[SqliteValue::from(key)],
         ) {
             Ok(row) => Ok(row.get(0).and_then(SqliteValue::as_text).map(String::from)),
-            Err(fsqlite_error::FrankenError::QueryReturnedNoRows) => Ok(None),
+            Err(e) if e.is_query_returned_no_rows() => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
@@ -2962,14 +2948,11 @@ impl SqliteStorage {
     ///
     /// Returns an error if the database update fails.
     pub fn set_config(&mut self, key: &str, value: &str) -> Result<()> {
-        // Explicit DELETE + INSERT instead of ON CONFLICT because
-        // fsqlite does not enforce UNIQUE constraints on non-rowid columns.
         self.conn.execute_with_params(
-            "DELETE FROM config WHERE key = ?",
-            &[SqliteValue::from(key)],
-        )?;
-        self.conn.execute_with_params(
-            "INSERT INTO config (key, value) VALUES (?, ?)",
+            "INSERT INTO config (key, value)
+             VALUES (?, ?)
+             ON CONFLICT(key) DO UPDATE
+             SET value = excluded.value",
             &[SqliteValue::from(key), SqliteValue::from(value)],
         )?;
         Ok(())
@@ -3217,7 +3200,7 @@ impl SqliteStorage {
                     .to_string();
                 Ok(Some((hash, exported)))
             }
-            Err(fsqlite_error::FrankenError::QueryReturnedNoRows) => Ok(None),
+            Err(e) if e.is_query_returned_no_rows() => Ok(None),
             Err(e) => Err(BeadsError::Database(e)),
         }
     }
@@ -3229,13 +3212,12 @@ impl SqliteStorage {
     /// Returns an error if the database update fails.
     pub fn set_export_hash(&mut self, issue_id: &str, content_hash: &str) -> Result<()> {
         let now = Utc::now().to_rfc3339();
-        // DELETE + INSERT instead of INSERT OR REPLACE (fsqlite UNIQUE limitation)
         self.conn.execute_with_params(
-            "DELETE FROM export_hashes WHERE issue_id = ?",
-            &[SqliteValue::from(issue_id)],
-        )?;
-        self.conn.execute_with_params(
-            "INSERT INTO export_hashes (issue_id, content_hash, exported_at) VALUES (?, ?, ?)",
+            "INSERT INTO export_hashes (issue_id, content_hash, exported_at)
+             VALUES (?, ?, ?)
+             ON CONFLICT(issue_id) DO UPDATE
+             SET content_hash = excluded.content_hash,
+                 exported_at = excluded.exported_at",
             &[
                 SqliteValue::from(issue_id),
                 SqliteValue::from(content_hash),
@@ -3259,13 +3241,12 @@ impl SqliteStorage {
         let now = Utc::now().to_rfc3339();
         let mut count = 0;
         for (issue_id, content_hash) in exports {
-            // DELETE + INSERT instead of INSERT OR REPLACE (fsqlite UNIQUE limitation)
             self.conn.execute_with_params(
-                "DELETE FROM export_hashes WHERE issue_id = ?",
-                &[SqliteValue::from(issue_id.as_str())],
-            )?;
-            self.conn.execute_with_params(
-                "INSERT INTO export_hashes (issue_id, content_hash, exported_at) VALUES (?, ?, ?)",
+                "INSERT INTO export_hashes (issue_id, content_hash, exported_at)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT(issue_id) DO UPDATE
+                 SET content_hash = excluded.content_hash,
+                     exported_at = excluded.exported_at",
                 &[
                     SqliteValue::from(issue_id.as_str()),
                     SqliteValue::from(content_hash.as_str()),
@@ -3345,7 +3326,7 @@ impl SqliteStorage {
             &[SqliteValue::from(key)],
         ) {
             Ok(row) => Ok(row.get(0).and_then(SqliteValue::as_text).map(String::from)),
-            Err(fsqlite_error::FrankenError::QueryReturnedNoRows) => Ok(None),
+            Err(e) if e.is_query_returned_no_rows() => Ok(None),
             Err(e) => Err(BeadsError::Database(e)),
         }
     }
@@ -3356,14 +3337,11 @@ impl SqliteStorage {
     ///
     /// Returns an error if the database update fails.
     pub fn set_metadata(&mut self, key: &str, value: &str) -> Result<()> {
-        // Explicit DELETE + INSERT instead of INSERT OR REPLACE because
-        // fsqlite does not enforce UNIQUE constraints on non-rowid columns.
         self.conn.execute_with_params(
-            "DELETE FROM metadata WHERE key = ?",
-            &[SqliteValue::from(key)],
-        )?;
-        self.conn.execute_with_params(
-            "INSERT INTO metadata (key, value) VALUES (?, ?)",
+            "INSERT INTO metadata (key, value)
+             VALUES (?, ?)
+             ON CONFLICT(key) DO UPDATE
+             SET value = excluded.value",
             &[SqliteValue::from(key), SqliteValue::from(value)],
         )?;
         Ok(())
@@ -3447,7 +3425,7 @@ impl SqliteStorage {
         s.filter(|v| !v.is_empty())
     }
 
-    fn issue_from_row(row: &fsqlite::Row) -> Result<Issue> {
+    fn issue_from_row(row: &Row) -> Result<Issue> {
         let get_str = |idx: usize| -> String {
             row.get(idx)
                 .and_then(SqliteValue::as_text)
@@ -3518,14 +3496,11 @@ impl SqliteStorage {
     ///
     /// Returns an error if the database operation fails.
     pub fn set_metadata_in_tx(conn: &Connection, key: &str, value: &str) -> Result<()> {
-        // Explicit DELETE + INSERT instead of INSERT OR REPLACE because
-        // fsqlite does not enforce UNIQUE constraints on non-rowid columns.
         conn.execute_with_params(
-            "DELETE FROM metadata WHERE key = ?",
-            &[SqliteValue::from(key)],
-        )?;
-        conn.execute_with_params(
-            "INSERT INTO metadata (key, value) VALUES (?, ?)",
+            "INSERT INTO metadata (key, value)
+             VALUES (?, ?)
+             ON CONFLICT(key) DO UPDATE
+             SET value = excluded.value",
             &[SqliteValue::from(key), SqliteValue::from(value)],
         )?;
         Ok(())
@@ -4038,7 +4013,7 @@ impl SqliteStorage {
             &[SqliteValue::from(external_ref)],
         ) {
             Ok(row) => Ok(Some(Self::issue_from_row(&row)?)),
-            Err(fsqlite_error::FrankenError::QueryReturnedNoRows) => Ok(None),
+            Err(e) if e.is_query_returned_no_rows() => Ok(None),
             Err(e) => Err(BeadsError::Database(e)),
         }
     }
@@ -4061,7 +4036,7 @@ impl SqliteStorage {
             &[SqliteValue::from(content_hash)],
         ) {
             Ok(row) => Ok(Some(Self::issue_from_row(&row)?)),
-            Err(fsqlite_error::FrankenError::QueryReturnedNoRows) => Ok(None),
+            Err(e) if e.is_query_returned_no_rows() => Ok(None),
             Err(e) => Err(BeadsError::Database(e)),
         }
     }
@@ -4080,7 +4055,7 @@ impl SqliteStorage {
                 let status = row.get(0).and_then(SqliteValue::as_text).unwrap_or("");
                 Ok(status == "tombstone")
             }
-            Err(fsqlite_error::FrankenError::QueryReturnedNoRows) => Ok(false),
+            Err(e) if e.is_query_returned_no_rows() => Ok(false),
             Err(e) => Err(BeadsError::Database(e)),
         }
     }
@@ -4105,13 +4080,6 @@ impl SqliteStorage {
         let deleted_at_str = issue.deleted_at.map(|dt| dt.to_rfc3339());
         let compacted_at_str = issue.compacted_at.map(|dt| dt.to_rfc3339());
 
-        // Explicit DELETE + INSERT instead of INSERT OR REPLACE because
-        // fsqlite does not enforce UNIQUE constraints on non-rowid columns.
-        self.conn.execute_with_params(
-            "DELETE FROM issues WHERE id = ?",
-            &[SqliteValue::from(issue.id.as_str())],
-        )?;
-
         let rows = self.conn.execute_with_params(
             r"INSERT INTO issues (
                 id, content_hash, title, description, design, acceptance_criteria, notes,
@@ -4123,41 +4091,77 @@ impl SqliteStorage {
                 pinned, is_template
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )",
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                content_hash = excluded.content_hash,
+                title = excluded.title,
+                description = excluded.description,
+                design = excluded.design,
+                acceptance_criteria = excluded.acceptance_criteria,
+                notes = excluded.notes,
+                status = excluded.status,
+                priority = excluded.priority,
+                issue_type = excluded.issue_type,
+                assignee = excluded.assignee,
+                owner = excluded.owner,
+                estimated_minutes = excluded.estimated_minutes,
+                created_at = excluded.created_at,
+                created_by = excluded.created_by,
+                updated_at = excluded.updated_at,
+                closed_at = excluded.closed_at,
+                close_reason = excluded.close_reason,
+                closed_by_session = excluded.closed_by_session,
+                due_at = excluded.due_at,
+                defer_until = excluded.defer_until,
+                external_ref = excluded.external_ref,
+                source_system = excluded.source_system,
+                source_repo = excluded.source_repo,
+                deleted_at = excluded.deleted_at,
+                deleted_by = excluded.deleted_by,
+                delete_reason = excluded.delete_reason,
+                original_type = excluded.original_type,
+                compaction_level = excluded.compaction_level,
+                compacted_at = excluded.compacted_at,
+                compacted_at_commit = excluded.compacted_at_commit,
+                original_size = excluded.original_size,
+                sender = excluded.sender,
+                ephemeral = excluded.ephemeral,
+                pinned = excluded.pinned,
+                is_template = excluded.is_template",
             &[
                 SqliteValue::from(issue.id.as_str()),
                 issue.content_hash.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
                 SqliteValue::from(issue.title.as_str()),
-                issue.description.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
-                issue.design.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
-                issue.acceptance_criteria.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
-                issue.notes.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
+                SqliteValue::from(issue.description.as_deref().unwrap_or("")),
+                SqliteValue::from(issue.design.as_deref().unwrap_or("")),
+                SqliteValue::from(issue.acceptance_criteria.as_deref().unwrap_or("")),
+                SqliteValue::from(issue.notes.as_deref().unwrap_or("")),
                 SqliteValue::from(status_str),
                 SqliteValue::from(i64::from(issue.priority.0)),
                 SqliteValue::from(issue_type_str),
                 issue.assignee.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
-                issue.owner.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
+                SqliteValue::from(issue.owner.as_deref().unwrap_or("")),
                 issue.estimated_minutes.map_or(SqliteValue::Null, |v| SqliteValue::from(i64::from(v))),
                 SqliteValue::from(created_at_str.as_str()),
-                issue.created_by.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
+                SqliteValue::from(issue.created_by.as_deref().unwrap_or("")),
                 SqliteValue::from(updated_at_str.as_str()),
                 closed_at_str.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
-                issue.close_reason.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
-                issue.closed_by_session.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
+                SqliteValue::from(issue.close_reason.as_deref().unwrap_or("")),
+                SqliteValue::from(issue.closed_by_session.as_deref().unwrap_or("")),
                 due_at_str.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
                 defer_until_str.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
                 issue.external_ref.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
-                issue.source_system.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
+                SqliteValue::from(issue.source_system.as_deref().unwrap_or("")),
                 SqliteValue::from(issue.source_repo.as_deref().unwrap_or(".")),
                 deleted_at_str.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
-                issue.deleted_by.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
-                issue.delete_reason.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
-                issue.original_type.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
+                SqliteValue::from(issue.deleted_by.as_deref().unwrap_or("")),
+                SqliteValue::from(issue.delete_reason.as_deref().unwrap_or("")),
+                SqliteValue::from(issue.original_type.as_deref().unwrap_or("")),
                 SqliteValue::from(i64::from(issue.compaction_level.unwrap_or(0))),
                 compacted_at_str.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
                 issue.compacted_at_commit.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
                 SqliteValue::from(i64::from(issue.original_size.unwrap_or(0))),
-                issue.sender.as_deref().map_or(SqliteValue::Null, SqliteValue::from),
+                SqliteValue::from(issue.sender.as_deref().unwrap_or("")),
                 SqliteValue::from(i64::from(i32::from(issue.ephemeral))),
                 SqliteValue::from(i64::from(i32::from(issue.pinned))),
                 SqliteValue::from(i64::from(i32::from(issue.is_template))),
@@ -5033,6 +5037,245 @@ mod tests {
     }
 
     #[test]
+    fn test_repeated_blocked_cache_rebuild_mutations_preserve_integrity() {
+        fn blocked_count(storage: &SqliteStorage) -> i64 {
+            storage
+                .conn
+                .query_row("SELECT count(*) FROM blocked_issues_cache")
+                .unwrap()
+                .get(0)
+                .and_then(SqliteValue::as_integer)
+                .unwrap_or(-1)
+        }
+
+        fn integrity_check(storage: &SqliteStorage) -> String {
+            storage
+                .conn
+                .query_row("PRAGMA integrity_check")
+                .unwrap()
+                .get(0)
+                .and_then(SqliteValue::as_text)
+                .unwrap_or("")
+                .to_string()
+        }
+
+        let mut storage = SqliteStorage::open_memory().unwrap();
+        let base_time = Utc.with_ymd_and_hms(2025, 7, 1, 0, 0, 0).unwrap();
+
+        for i in 0..12 {
+            let issue = make_issue(
+                &format!("bd-chain-{i}"),
+                &format!("Chain {i}"),
+                Status::Open,
+                2,
+                None,
+                base_time,
+                None,
+            );
+            storage.create_issue(&issue, "tester").unwrap();
+        }
+
+        for i in 1..12 {
+            storage
+                .add_dependency(
+                    &format!("bd-chain-{i}"),
+                    &format!("bd-chain-{}", i - 1),
+                    "blocks",
+                    "tester",
+                )
+                .unwrap();
+        }
+
+        assert_eq!(blocked_count(&storage), 11);
+        assert_eq!(integrity_check(&storage), "ok");
+
+        for cycle in 0..5 {
+            let close_update = IssueUpdate {
+                status: Some(Status::Closed),
+                close_reason: Some(Some(format!("close cycle {cycle}"))),
+                ..IssueUpdate::default()
+            };
+            storage
+                .update_issue("bd-chain-0", &close_update, "tester")
+                .unwrap();
+
+            assert_eq!(
+                blocked_count(&storage),
+                10,
+                "close cycle {cycle} should only unblock the first dependent"
+            );
+            assert_eq!(
+                integrity_check(&storage),
+                "ok",
+                "integrity check failed after close cycle {cycle}"
+            );
+
+            let reopen_update = IssueUpdate {
+                status: Some(Status::Open),
+                close_reason: Some(None),
+                closed_at: Some(None),
+                ..IssueUpdate::default()
+            };
+            storage
+                .update_issue("bd-chain-0", &reopen_update, "tester")
+                .unwrap();
+
+            assert_eq!(
+                blocked_count(&storage),
+                11,
+                "reopen cycle {cycle} should restore transitive blockers"
+            );
+            assert_eq!(
+                integrity_check(&storage),
+                "ok",
+                "integrity check failed after reopen cycle {cycle}"
+            );
+        }
+
+        let ready = storage
+            .get_ready_issues(&ReadyFilters::default(), ReadySortPolicy::Hybrid)
+            .unwrap();
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].id, "bd-chain-0");
+    }
+
+    #[test]
+    fn test_blocked_cache_propagates_beyond_fifty_parent_child_levels() {
+        fn blocked_count(storage: &SqliteStorage) -> i64 {
+            storage
+                .conn
+                .query_row("SELECT count(*) FROM blocked_issues_cache")
+                .unwrap()
+                .get(0)
+                .and_then(SqliteValue::as_integer)
+                .unwrap_or(-1)
+        }
+
+        let mut storage = SqliteStorage::open_memory().unwrap();
+        let base_time = Utc.with_ymd_and_hms(2025, 7, 2, 0, 0, 0).unwrap();
+
+        let root_blocker = make_issue(
+            "bd-root-blocker",
+            "Root blocker",
+            Status::Open,
+            2,
+            None,
+            base_time,
+            None,
+        );
+        storage.create_issue(&root_blocker, "tester").unwrap();
+
+        let chain_len = 62usize;
+        for i in 0..chain_len {
+            let issue = make_issue(
+                &format!("bd-deep-{i}"),
+                &format!("Deep {i}"),
+                Status::Open,
+                2,
+                None,
+                base_time,
+                None,
+            );
+            storage.create_issue(&issue, "tester").unwrap();
+        }
+
+        storage
+            .add_dependency("bd-deep-0", "bd-root-blocker", "blocks", "tester")
+            .unwrap();
+
+        for i in 1..chain_len {
+            storage
+                .add_dependency(
+                    &format!("bd-deep-{i}"),
+                    &format!("bd-deep-{}", i - 1),
+                    "parent-child",
+                    "tester",
+                )
+                .unwrap();
+        }
+
+        storage.rebuild_blocked_cache(true).unwrap();
+
+        assert_eq!(blocked_count(&storage), chain_len as i64);
+
+        let ready = storage
+            .get_ready_issues(&ReadyFilters::default(), ReadySortPolicy::default())
+            .unwrap();
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].id, "bd-root-blocker");
+
+        let integrity_row = storage.conn.query_row("PRAGMA integrity_check").unwrap();
+        let integrity = integrity_row
+            .get(0)
+            .and_then(SqliteValue::as_text)
+            .unwrap_or("");
+        assert_eq!(integrity, "ok");
+    }
+
+    #[test]
+    fn test_concurrent_writers_fail_cleanly_then_recover() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("contention.db");
+
+        let writer_one = SqliteStorage::open_with_timeout(&db_path, Some(0)).unwrap();
+        let mut writer_two = SqliteStorage::open_with_timeout(&db_path, Some(0)).unwrap();
+
+        writer_one.conn.execute("BEGIN IMMEDIATE").unwrap();
+
+        let contended_issue = make_issue(
+            "bd-contended",
+            "Contended create",
+            Status::Open,
+            2,
+            None,
+            Utc::now(),
+            None,
+        );
+
+        let err = writer_two
+            .create_issue(&contended_issue, "tester")
+            .expect_err("second writer should fail while first holds write lock");
+        match err {
+            BeadsError::Database(db_err) => {
+                assert!(
+                    db_err.is_transient(),
+                    "expected transient lock error, got: {db_err}"
+                );
+            }
+            other => panic!("expected database lock error, got: {other}"),
+        }
+
+        let count_during_lock = writer_one
+            .conn
+            .query_row("SELECT count(*) FROM issues")
+            .unwrap()
+            .get(0)
+            .and_then(SqliteValue::as_integer)
+            .unwrap_or(-1);
+        assert_eq!(count_during_lock, 0);
+
+        writer_one.conn.execute("COMMIT").unwrap();
+
+        writer_two.create_issue(&contended_issue, "tester").unwrap();
+
+        let persisted_count = writer_one
+            .conn
+            .query_row("SELECT count(*) FROM issues")
+            .unwrap()
+            .get(0)
+            .and_then(SqliteValue::as_integer)
+            .unwrap_or(-1);
+        assert_eq!(persisted_count, 1);
+
+        let integrity_row = writer_one.conn.query_row("PRAGMA integrity_check").unwrap();
+        let integrity = integrity_row
+            .get(0)
+            .and_then(SqliteValue::as_text)
+            .unwrap_or("");
+        assert_eq!(integrity, "ok");
+    }
+
+    #[test]
     fn test_update_issue_recomputes_hash() {
         let mut storage = SqliteStorage::open_memory().unwrap();
         let mut issue = make_issue(
@@ -5087,6 +5330,29 @@ mod tests {
         // Delete non-existent key
         let deleted_again = storage.delete_config("nonexistent").unwrap();
         assert!(!deleted_again, "Should return false when key doesn't exist");
+    }
+
+    #[test]
+    fn test_set_config_overwrites_existing_value() {
+        let mut storage = SqliteStorage::open_memory().unwrap();
+
+        storage.set_config("test_key", "first").unwrap();
+        storage.set_config("test_key", "second").unwrap();
+
+        assert_eq!(
+            storage.get_config("test_key").unwrap(),
+            Some("second".to_string())
+        );
+
+        let row = storage
+            .conn
+            .query_row_with_params(
+                "SELECT count(*) FROM config WHERE key = ?",
+                &[SqliteValue::from("test_key")],
+            )
+            .unwrap();
+        let count = row.get(0).and_then(SqliteValue::as_integer).unwrap_or(-1);
+        assert_eq!(count, 1);
     }
 
     #[test]
@@ -5167,9 +5433,9 @@ mod tests {
 
     #[test]
     fn test_diag_data_visibility() {
-        use fsqlite_types::value::SqliteValue;
+        use crate::storage::db::{Connection, Row, SqliteValue};
         // Simplest possible reproduction
-        let conn = fsqlite::Connection::open(":memory:".to_string()).unwrap();
+        let conn = Connection::open(":memory:".to_string()).unwrap();
         conn.execute("CREATE TABLE t (k TEXT, v TEXT)").unwrap();
         conn.execute_with_params(
             "INSERT INTO t VALUES (?, ?)",
@@ -5183,7 +5449,7 @@ mod tests {
             .unwrap();
         eprintln!(
             "[DIAG] 1. count(*) no WHERE: {:?}",
-            r1.first().map(fsqlite::Row::values)
+            r1.first().map(Row::values)
         );
 
         // 2: count with literal WHERE
@@ -5192,7 +5458,7 @@ mod tests {
             .unwrap();
         eprintln!(
             "[DIAG] 2. count(*) literal WHERE: {:?}",
-            r2.first().map(fsqlite::Row::values)
+            r2.first().map(Row::values)
         );
 
         // 3: count with bind WHERE
@@ -5213,7 +5479,7 @@ mod tests {
             .unwrap();
         eprintln!(
             "[DIAG] 3. count(*) bind WHERE: {:?}",
-            r3.first().map(fsqlite::Row::values)
+            r3.first().map(Row::values)
         );
 
         // Also get EXPLAIN for the working non-aggregate version
@@ -5233,7 +5499,7 @@ mod tests {
             .unwrap();
         eprintln!(
             "[DIAG] 4. select k bind WHERE: {:?}",
-            r4.first().map(fsqlite::Row::values)
+            r4.first().map(Row::values)
         );
 
         // 5: count(k) with bind WHERE
@@ -5245,7 +5511,7 @@ mod tests {
             .unwrap();
         eprintln!(
             "[DIAG] 5. count(k) bind WHERE: {:?}",
-            r5.first().map(fsqlite::Row::values)
+            r5.first().map(Row::values)
         );
 
         // 6: count with bind WHERE but no match
@@ -5257,7 +5523,7 @@ mod tests {
             .unwrap();
         eprintln!(
             "[DIAG] 6. count(*) bind WHERE no match: {:?}",
-            r6.first().map(fsqlite::Row::values)
+            r6.first().map(Row::values)
         );
 
         let c = r3
@@ -5271,9 +5537,9 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_diag_root_page_visibility() {
-        use fsqlite_types::value::SqliteValue;
+        use crate::storage::db::{Connection, SqliteValue};
         // Create full beads schema and check which root pages are accessible
-        let conn = fsqlite::Connection::open(":memory:".to_string()).unwrap();
+        let conn = Connection::open(":memory:".to_string()).unwrap();
 
         // Apply schema step by step, checking after each table
         let tables = vec![(
@@ -5415,7 +5681,7 @@ mod tests {
 
         // Also try: incrementally create indexes and check count(*) after each
         eprintln!("[ROOT-DIAG] --- Incremental index creation with count check ---");
-        let conn2 = fsqlite::Connection::open(":memory:".to_string()).unwrap();
+        let conn2 = Connection::open(":memory:".to_string()).unwrap();
         conn2
             .execute("CREATE TABLE t (a TEXT, b TEXT, c TEXT, d TEXT, e TEXT)")
             .unwrap();
@@ -5447,7 +5713,7 @@ mod tests {
 
         // Test multi-insert with explicit transactions
         eprintln!("[ROOT-DIAG] --- Multi-insert test ---");
-        let conn3 = fsqlite::Connection::open(":memory:".to_string()).unwrap();
+        let conn3 = Connection::open(":memory:".to_string()).unwrap();
         conn3
             .execute("CREATE TABLE ev (id INTEGER PRIMARY KEY AUTOINCREMENT, msg TEXT)")
             .unwrap();
@@ -5489,7 +5755,7 @@ mod tests {
         }
 
         // Also test without explicit transactions (autocommit)
-        let conn4 = fsqlite::Connection::open(":memory:".to_string()).unwrap();
+        let conn4 = Connection::open(":memory:".to_string()).unwrap();
         conn4
             .execute("CREATE TABLE ev2 (id INTEGER PRIMARY KEY AUTOINCREMENT, msg TEXT)")
             .unwrap();
@@ -5530,7 +5796,7 @@ mod tests {
 
         // Test events-like table with indexes and WHERE+ORDER BY
         eprintln!("[ROOT-DIAG] --- Events-like test ---");
-        let conn5 = fsqlite::Connection::open(":memory:".to_string()).unwrap();
+        let conn5 = Connection::open(":memory:".to_string()).unwrap();
         conn5
             .execute("CREATE TABLE issues2 (id TEXT PRIMARY KEY, title TEXT)")
             .unwrap();

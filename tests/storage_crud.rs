@@ -673,6 +673,32 @@ fn upsert_issue_for_import_updates_existing() {
 }
 
 #[test]
+fn upsert_issue_for_import_preserves_existing_events() {
+    let mut storage = test_db();
+    let issue = fixtures::issue("upsert-events");
+
+    storage.create_issue(&issue, "tester").unwrap();
+
+    let before = storage.get_events(&issue.id, 50).unwrap();
+    assert!(!before.is_empty(), "create should record at least one event");
+
+    let mut imported = storage.get_issue(&issue.id).unwrap().expect("issue exists");
+    imported.title = "Imported title".to_string();
+
+    storage.upsert_issue_for_import(&imported).unwrap();
+
+    let after = storage.get_events(&issue.id, 50).unwrap();
+    let retrieved = storage.get_issue(&issue.id).unwrap().expect("issue exists");
+
+    assert_eq!(retrieved.title, "Imported title");
+    assert_eq!(
+        after.len(),
+        before.len(),
+        "import upsert should not delete existing audit events"
+    );
+}
+
+#[test]
 fn upsert_issue_stores_all_fields() {
     let mut storage = test_db();
     let now = Utc::now();

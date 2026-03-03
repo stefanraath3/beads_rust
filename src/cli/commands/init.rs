@@ -84,7 +84,7 @@ pub fn execute(
     if !config_existed {
         let config = format!(
             "# Beads Project Configuration
-# issue_prefix: {normalized}
+issue_prefix: {normalized}
 # default_priority: 2
 # default_type: task
 "
@@ -342,6 +342,10 @@ mod tests {
         let storage = SqliteStorage::open(&db_path).unwrap();
         let prefix = storage.get_config("issue_prefix").unwrap();
         assert_eq!(prefix, Some("test".to_string()));
+
+        let config_path = temp_dir.path().join(".beads/config.yaml");
+        let config = fs::read_to_string(config_path).unwrap();
+        assert!(config.contains("issue_prefix: test"));
         info!("test_init_with_prefix: assertions passed");
     }
 

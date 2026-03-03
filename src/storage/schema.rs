@@ -1,11 +1,9 @@
 //! Database schema definitions and migration logic.
 
-use fsqlite::Connection;
-use fsqlite_types::SqliteValue;
-
 use crate::error::Result;
+use crate::storage::db::{Connection, SqliteValue};
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 2;
+pub const CURRENT_SCHEMA_VERSION: i32 = 3;
 
 /// The complete SQL schema for the beads database.
 /// Schema matches classic bd (Go) for interoperability.
@@ -151,19 +149,15 @@ pub const SCHEMA_SQL: &str = r"
     CREATE INDEX IF NOT EXISTS idx_events_actor ON events(actor) WHERE actor != '';
 
     -- Config (Runtime)
-    -- NOTE: Avoid PRIMARY KEY/UNIQUE constraints here because the current
-    -- storage engine does not reliably maintain unique autoindexes.
-    -- Application code enforces key replacement via DELETE + INSERT.
     CREATE TABLE IF NOT EXISTS config (
-        key TEXT NOT NULL,
+        key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_config_key ON config(key);
 
     -- Metadata
-    -- Same rationale as config: keep it as key-value with explicit index.
     CREATE TABLE IF NOT EXISTS metadata (
-        key TEXT NOT NULL,
+        key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_metadata_key ON metadata(key);
@@ -202,17 +196,9 @@ pub const SCHEMA_SQL: &str = r"
     );
 ";
 
-/// Execute multiple SQL statements separated by semicolons.
-///
-/// fsqlite does not support `execute_batch`, so we split on `;` and
-/// execute each non-empty statement individually.
+/// Execute multiple SQL statements in a single batch.
 pub(crate) fn execute_batch(conn: &Connection, sql: &str) -> Result<()> {
-    for stmt in sql.split(';') {
-        let trimmed = stmt.trim();
-        if !trimmed.is_empty() {
-            conn.execute(trimmed)?;
-        }
-    }
+    conn.execute_batch(sql)?;
     Ok(())
 }
 
@@ -542,7 +528,7 @@ fn kv_table_uses_primary_key(conn: &Connection, table: &str) -> bool {
     conn.query(&sql).is_ok_and(|rows| !rows.is_empty())
 }
 
-fn rebuild_kv_table_without_unique(conn: &Connection, table: &str) -> Result<()> {
+fn rebuild_kv_table_with_primary_key(conn: &Connection, table: &str) -> Result<()> {
     let tmp_table = format!("{table}_rebuild_tmp");
 
     conn.execute("BEGIN EXCLUSIVE")?;
@@ -551,15 +537,20 @@ fn rebuild_kv_table_without_unique(conn: &Connection, table: &str) -> Result<()>
         conn.execute(&format!("DROP TABLE IF EXISTS {tmp_table}"))?;
         conn.execute(&format!(
             "CREATE TABLE {tmp_table} (
-                key TEXT NOT NULL,
+                key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             )"
         ))?;
 
         conn.execute(&format!(
             "INSERT INTO {tmp_table} (key, value)
-             SELECT key, value
-             FROM {table}"
+             SELECT src.key, src.value
+             FROM {table} src
+             WHERE src.rowid = (
+                 SELECT MAX(src2.rowid)
+                 FROM {table} src2
+                 WHERE src2.key = src.key
+             )"
         ))?;
 
         conn.execute(&format!("DROP TABLE {table}"))?;
@@ -581,14 +572,14 @@ fn rebuild_kv_table_without_unique(conn: &Connection, table: &str) -> Result<()>
 /// This must run BEFORE `execute_batch(SCHEMA_SQL)` because the schema includes
 /// CREATE INDEX statements that will fail if old tables have missing columns.
 fn run_pre_schema_migrations(conn: &Connection) -> Result<()> {
-    // Legacy schemas used PRIMARY KEY on config/metadata key columns.
-    // Rebuild to plain key-value tables so standard sqlite integrity checks
-    // are not tripped by unsupported unique-index maintenance behavior.
-    if kv_table_uses_primary_key(conn, "config") {
-        rebuild_kv_table_without_unique(conn, "config")?;
+    // Legacy fsqlite-era schemas removed PRIMARY KEY from config/metadata key
+    // columns. Rebuild those tables back to standard SQLite key-value tables so
+    // we can use native upsert semantics again.
+    if table_exists(conn, "config") && !kv_table_uses_primary_key(conn, "config") {
+        rebuild_kv_table_with_primary_key(conn, "config")?;
     }
-    if kv_table_uses_primary_key(conn, "metadata") {
-        rebuild_kv_table_without_unique(conn, "metadata")?;
+    if table_exists(conn, "metadata") && !kv_table_uses_primary_key(conn, "metadata") {
+        rebuild_kv_table_with_primary_key(conn, "metadata")?;
     }
 
     // Drop blocked_issues_cache if it exists but lacks required columns.
@@ -766,7 +757,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fsqlite::Connection;
+    use crate::storage::db::Connection;
     use std::collections::HashSet;
     use tempfile::TempDir;
 
@@ -1360,14 +1351,16 @@ mod tests {
             &conn,
             r"
             CREATE TABLE config (
-                key TEXT PRIMARY KEY,
+                key TEXT NOT NULL,
                 value TEXT NOT NULL
             );
             CREATE TABLE metadata (
-                key TEXT PRIMARY KEY,
+                key TEXT NOT NULL,
                 value TEXT NOT NULL
             );
+            INSERT INTO config (key, value) VALUES ('issue_prefix', 'old');
             INSERT INTO config (key, value) VALUES ('issue_prefix', 'new');
+            INSERT INTO metadata (key, value) VALUES ('project', 'old');
             INSERT INTO metadata (key, value) VALUES ('project', 'new');
         ",
         )
@@ -1375,14 +1368,14 @@ mod tests {
 
         apply_schema(&conn).unwrap();
 
-        // key column should no longer be PRIMARY KEY in rebuilt tables.
+        // key column should be PRIMARY KEY again in rebuilt tables.
         let config_key_pk = conn
             .query("SELECT pk FROM pragma_table_info('config') WHERE name='key'")
             .unwrap()
             .first()
             .and_then(|row| row.get(0).and_then(SqliteValue::as_integer))
             .unwrap_or(0);
-        assert_eq!(config_key_pk, 0);
+        assert_eq!(config_key_pk, 1);
 
         let metadata_key_pk = conn
             .query("SELECT pk FROM pragma_table_info('metadata') WHERE name='key'")
@@ -1390,9 +1383,9 @@ mod tests {
             .first()
             .and_then(|row| row.get(0).and_then(SqliteValue::as_integer))
             .unwrap_or(0);
-        assert_eq!(metadata_key_pk, 0);
+        assert_eq!(metadata_key_pk, 1);
 
-        // Migration should preserve existing values.
+        // Migration should preserve the latest value for duplicate keys.
         let config_latest = conn
             .query_row_with_params(
                 "SELECT value FROM config WHERE key = ?",

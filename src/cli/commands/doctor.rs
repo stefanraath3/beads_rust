@@ -5,11 +5,10 @@
 use crate::config;
 use crate::error::Result;
 use crate::output::OutputContext;
+use crate::storage::db::{Connection, SqliteValue};
 use crate::sync::{
     PathValidation, scan_conflict_markers, validate_no_git_path, validate_sync_path,
 };
-use fsqlite::Connection;
-use fsqlite_types::SqliteValue;
 use rich_rust::prelude::*;
 use serde::Serialize;
 use std::fs::{self, File};
@@ -927,7 +926,7 @@ pub fn execute(cli: &config::CliOverrides, ctx: &OutputContext) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fsqlite::Connection;
+    use crate::storage::db::Connection;
     use tempfile::NamedTempFile;
 
     fn find_check<'a>(checks: &'a [CheckResult], name: &str) -> Option<&'a CheckResult> {
