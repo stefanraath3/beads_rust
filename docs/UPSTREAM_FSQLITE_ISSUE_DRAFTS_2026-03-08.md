@@ -343,80 +343,6 @@ The database file still begins with an `SQLite format 3` header, which makes the
 
 Title:
 
-`import path still uses DELETE + INSERT instead of a true keyed upsert`
-
-Body:
-
-```md
-## Summary
-
-`upsert_issue_for_import` still performs `DELETE + INSERT` because of `fsqlite` limitations.
-
-## Relevant Code
-
-- `src/storage/sqlite.rs:4290-4298`
-
-The current code explicitly documents that this is a workaround for `fsqlite` uniqueness behavior.
-
-## Why This Matters
-
-- import/sync is a critical path
-- delete/reinsert semantics are weaker than a true keyed upsert
-- this increases correctness risk and makes the import path harder to reason about
-
-## Current Validation Result
-
-A simple forced JSONL import round-trip did succeed in the tested case, so this issue is being filed as structural correctness risk / technical debt rather than as a newly reproduced end-user breakage.
-
-## Normal Use Trigger
-
-This path is triggered by normal sync/import usage:
-
-- `br sync --import-only`
-- `br sync --merge`
-- any workflow that imports updated issue rows from JSONL back into the DB
-
-It becomes more important when imported issues already have related rows such as:
-
-- events
-- comments
-- labels
-- dependency rows
-
-## User-Visible Symptom
-
-In the simple tested case there was no visible breakage, but the underlying risk is:
-
-- imported rows are implemented via delete/reinsert semantics instead of true row updates
-- related-row preservation becomes harder to reason about
-- edge cases may show up around audit/history preservation or row identity assumptions
-
-## Affected Commands
-
-- `br sync --import-only`
-- `br sync --merge`
-- any import path that calls `upsert_issue_for_import`
-
-## Severity / Operational Impact
-
-This is medium severity as currently framed. It is an implementation-level correctness risk in a critical path, but this validation did not produce a simple end-user failure case comparable to the concurrency or blocked-cache findings.
-
-## Suggested Fix Direction
-
-- replace `DELETE + INSERT` with keyed upsert on `issues(id)`
-- add a regression that proves related rows are preserved across import updates
-
-## Acceptance Criteria
-
-- import path uses keyed upsert on `issues(id)`
-- related rows are preserved across import upsert
-- a regression test covers that preservation
-```
-
-## Issue 5
-
-Title:
-
 `schema batch executor still splits SQL on semicolons due to fsqlite limitation`
 
 Body:
@@ -432,7 +358,7 @@ Tested on:
 
 ## Reproduction
 
-This was validated as a structural risk in upstream code rather than as a fresh end-user CLI failure.
+This was reproduced directly against the same execution shape upstream currently uses in `src/storage/schema.rs`.
 
 To inspect the current implementation:
 
@@ -442,16 +368,101 @@ cd /tmp/beads_rust_upstream
 sed -n '207,219p' src/storage/schema.rs
 ```
 
-To demonstrate the failure shape that this implementation can cause, the following minimal Rust test case exercises the same semicolon-splitting hazard:
+Then run this disposable harness:
 
-```rust
-let sql = "INSERT INTO demo(value) VALUES('a;b'); INSERT INTO demo(value) VALUES('c');";
-for stmt in sql.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-    println!("{stmt}");
+```bash
+tmp=$(mktemp -d /tmp/issue5-semicolon-harness.XXXXXX)
+cd "$tmp"
+
+cat > Cargo.toml <<'EOF'
+[package]
+name = "issue5_semicolon_harness"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fsqlite = "0.1.1"
+EOF
+
+mkdir -p src
+cat > src/main.rs <<'EOF'
+use fsqlite::Connection;
+
+fn execute_batch_like_upstream(conn: &Connection, sql: &str) -> Result<(), String> {
+    for stmt in sql.split(';') {
+        let trimmed = stmt.trim();
+        if !trimmed.is_empty() {
+            conn.execute(trimmed).map_err(|err| format!("{err}"))?;
+        }
+    }
+    Ok(())
 }
+
+fn run_case(name: &str, setup: &[&str], sql: &str) {
+    let conn = Connection::open(":memory:").expect("open in-memory fsqlite db");
+    for stmt in setup {
+        conn.execute(stmt).expect("setup should succeed");
+    }
+
+    let fragments: Vec<&str> = sql
+        .split(';')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let result = execute_batch_like_upstream(&conn, sql);
+
+    println!("CASE: {name}");
+    println!("SQL: {sql}");
+    println!("FRAGMENTS:");
+    for (idx, fragment) in fragments.iter().enumerate() {
+        println!("  {}. {}", idx + 1, fragment);
+    }
+    println!("RESULT: {:?}", result);
+    println!();
+}
+
+fn main() {
+    run_case(
+        "insert literal with semicolon",
+        &["CREATE TABLE demo(value TEXT NOT NULL)"],
+        "INSERT INTO demo(value) VALUES('a;b'); INSERT INTO demo(value) VALUES('c');",
+    );
+
+    run_case(
+        "create table default literal with semicolon",
+        &[],
+        "CREATE TABLE defaults_demo(value TEXT DEFAULT 'a;b');",
+    );
+
+    run_case(
+        "create view literal with semicolon",
+        &[],
+        "CREATE VIEW demo_view AS SELECT 'a;b' AS value;",
+    );
+}
+EOF
+
+rustup run nightly-2026-02-19 cargo run --quiet
 ```
 
-The first statement is incorrectly split in the middle of the string literal. Any schema or migration path that relies on the same splitting strategy is vulnerable to this class of bug.
+Observed failure cases:
+
+- `INSERT INTO demo(value) VALUES('a;b'); INSERT INTO demo(value) VALUES('c');`
+- `CREATE TABLE defaults_demo(value TEXT DEFAULT 'a;b');`
+- `CREATE VIEW demo_view AS SELECT 'a;b' AS value;`
+
+Observed behavior:
+
+- the raw `split(';')` logic breaks the SQL inside the string literal
+- `fsqlite` then raises an unterminated-string parse error
+- example fragment output:
+  - `INSERT INTO demo(value) VALUES('a`
+  - `b')`
+
+Example error:
+
+- `unexpected token in expression: Error("unterminated string literal starting at byte ...")`
 
 ## Relevant Code
 
@@ -470,12 +481,15 @@ Manual semicolon splitting is structurally unsafe when SQL string literals conta
 ## Actual
 
 - upstream currently tokenizes schema SQL by splitting on raw `;`
-- this is only safe for a restricted subset of SQL text
-- correctness depends on schema authors never introducing semicolons inside string literals or other edge cases that a real SQL parser would handle
+- this fails for valid SQL containing semicolons inside string literals
+- reproduced examples include:
+  - `INSERT ... VALUES('a;b')`
+  - `DEFAULT 'a;b'`
+  - `CREATE VIEW ... SELECT 'a;b'`
 
 ## Current Validation Result
 
-This was not reproduced as an active CLI failure in this pass, but it remains a fragile implementation point tied directly to the current storage backend limitations.
+This was not reproduced as a current black-box `br init` failure on the existing schema, but it was reproduced directly against the exact helper logic upstream currently uses for schema execution.
 
 ## Normal Use Trigger
 
@@ -490,14 +504,12 @@ It is not primarily a day-to-day end-user command issue. It is a maintenance and
 
 ## User-Visible Symptom
 
-If this fails in practice, symptoms would likely appear as:
+If a migration or schema change introduces this pattern, symptoms would likely appear as:
 
 - broken init or migration behavior
 - unexpected SQL parse failures
 - partial schema application
-- environment-specific failures where one schema edit works in a simplified test but breaks in a real migration batch
-
-This validation did not reproduce a current CLI failure, so this should be treated as fragile technical debt rather than a confirmed user-facing regression.
+- environment-specific failures where a valid SQL statement fails only because the batch executor split it incorrectly
 
 ## Affected Commands
 
@@ -512,14 +524,17 @@ More indirectly affected surfaces:
 
 ## Severity / Operational Impact
 
-This is medium severity maintenance debt. It is less urgent than the concurrency and blocked-cache issues, but it is still a brittle implementation point worth removing.
+This is medium severity maintenance debt. It is less urgent than the concurrency and blocked-cache issues, but it is still a concrete schema-execution bug class worth removing.
 
 The risk is concentrated around future change velocity: it makes schema evolution less safe, increases the chance of subtle migration regressions, and leaves correctness dependent on a text-splitting workaround rather than SQL execution semantics.
 
 ## Suggested Fix Direction
 
 - use real batch execution semantics
-- add a regression that includes semicolons inside SQL string literals
+- add regressions that cover at least:
+  - `INSERT ... VALUES('a;b')`
+  - `DEFAULT 'a;b'`
+  - `CREATE VIEW ... SELECT 'a;b'`
 - if `fsqlite` cannot support this safely, isolate the limitation clearly or replace the execution path rather than relying on raw string splitting
 
 ## Acceptance Criteria

@@ -27,7 +27,6 @@ This validation was based on the problem classes called out in `BR_RUSQLITE_FORK
 
 - storage-engine correctness failures
 - blocked-cache correctness failures
-- import/upsert correctness risks
 - schema execution hazards caused by `fsqlite` limitations
 
 The current upstream still depends on the `fsqlite` / `frankensqlite` stack:
@@ -38,7 +37,6 @@ The current upstream still depends on the `fsqlite` / `frankensqlite` stack:
 Relevant upstream code points:
 
 - hardcoded blocked-cache propagation cap: `src/storage/sqlite.rs:1619-1725`
-- import path uses `DELETE + INSERT`: `src/storage/sqlite.rs:4290-4298`
 - schema batch executor splits SQL on `;`: `src/storage/schema.rs:207-219`
 
 Relevant fork control points:
@@ -46,8 +44,6 @@ Relevant fork control points:
 - convergence-based blocked-cache propagation: `src/storage/sqlite.rs:1560-1600`
 - explicit regression for >50 parent-child levels: `src/storage/sqlite.rs:5142-5215`
 - concurrent writer recovery regression: `src/storage/sqlite.rs:5218-5278`
-- import upsert uses `ON CONFLICT(id) DO UPDATE`: `src/storage/sqlite.rs:4071-4129`
-- regression for preserving events across import upsert: `tests/storage_crud.rs:676-701`
 - regression for semicolons inside SQL string literals: `src/storage/db.rs:381-390`
 
 ## Summary
@@ -60,14 +56,14 @@ Confirmed current upstream issues:
 
 Structural risk points still present upstream:
 
-4. Import upsert still uses `DELETE + INSERT` because of `fsqlite` limitations.
-5. Schema batch execution still splits SQL on `;` because `fsqlite` lacks batch execution support.
+4. Schema batch execution still splits SQL on `;` because `fsqlite` lacks batch execution support.
 
 Non-reproductions in this validation:
 
 - the multiple-parent blocked-cache repro passed
 - repeated close/reopen blocked-cache mutation stress passed in black-box CLI form
 - a simple JSONL import round-trip did update the issue and preserve comments in the tested case
+- import collision/remap with omitted relations removed comments, labels, and dependencies, but the same behavior reproduced on the `bx` control fork and should be treated as import semantics rather than an upstream-only `fsqlite` bug
 
 That means the current upstream is not failing everywhere. The failures are specific, but they are still material.
 
@@ -422,80 +418,9 @@ Tested on:
 - `PRAGMA integrity_check` returns `ok`
 ```
 
-## Finding 4: Import Upsert Still Uses `DELETE + INSERT`
+## Finding 4: Schema Batch Execution Still Splits SQL On Semicolons
 
-Status: structural risk confirmed in code, not reproduced as a user-visible failure in this run
-
-### Why This Matters
-
-Upstream still uses `DELETE + INSERT` inside `upsert_issue_for_import`:
-
-- `src/storage/sqlite.rs:4290-4298`
-
-The comment explicitly says this is because `fsqlite` does not enforce UNIQUE constraints on non-rowid columns.
-
-This is important because the import path is on the sync hot path, and `DELETE + INSERT` is a much weaker primitive than a real keyed upsert.
-
-### Current Validation Result
-
-A simple black-box JSONL import round-trip did succeed on latest upstream:
-
-- title updated correctly after `sync --import-only`
-- comments were still visible after import
-
-So this was not reproduced as a current end-user breakage in the simple tested case.
-
-### Why It Is Still Worth Filing
-
-- it is a storage-engine-driven workaround still present in a critical path
-- it diverges from normal SQLite semantics
-- it is exactly the kind of workaround that makes import behavior harder to reason about
-
-### Suggested Fix Direction
-
-- replace `DELETE + INSERT` with a true keyed upsert on `issues(id)`
-- add a regression that proves import upsert preserves related rows such as audit events
-
-The fork already implements this using `ON CONFLICT(id) DO UPDATE`:
-
-- `src/storage/sqlite.rs:4071-4129`
-
-The fork also has an explicit preservation test:
-
-- `tests/storage_crud.rs:676-701`
-
-### Suggested Upstream Issue
-
-Title:
-
-`import path still uses DELETE + INSERT instead of a true keyed upsert`
-
-Suggested body:
-
-```md
-## Summary
-
-`upsert_issue_for_import` still performs `DELETE + INSERT` because of `fsqlite` limitations.
-
-## Relevant Code
-
-- `src/storage/sqlite.rs:4290-4298`
-
-## Why This Matters
-
-- import/sync is a critical path
-- delete/reinsert semantics are weaker than a true upsert
-- this creates avoidable correctness risk and complexity
-
-## Suggested Acceptance Criteria
-
-- import path uses keyed upsert on `issues(id)`
-- regression test verifies related rows are preserved across import upsert
-```
-
-## Finding 5: Schema Batch Execution Still Splits SQL On Semicolons
-
-Status: structural risk confirmed in code, not reproduced as an active CLI failure in this run
+Status: concrete helper-level failure reproduced; not reproduced as a current black-box CLI failure on the existing schema
 
 ### Why This Matters
 
@@ -509,7 +434,15 @@ This is a known hazard because SQL string literals can legally contain semicolon
 
 ### Current Validation Result
 
-This did not reproduce as a black-box CLI failure in this pass, but the upstream implementation is still structurally fragile.
+This did not reproduce as a black-box CLI failure in this pass, but it was reproduced directly against the same execution shape upstream currently uses.
+
+A disposable harness using `fsqlite::Connection` and the same raw `split(';')` logic reproduced failures for:
+
+- `INSERT INTO demo(value) VALUES('a;b'); INSERT INTO demo(value) VALUES('c');`
+- `CREATE TABLE defaults_demo(value TEXT DEFAULT 'a;b');`
+- `CREATE VIEW demo_view AS SELECT 'a;b' AS value;`
+
+In all three cases, the helper split the SQL inside the string literal and `fsqlite` then raised an unterminated-string parse error.
 
 The fork now has an explicit regression test for the semicolon-in-string case:
 
@@ -520,7 +453,10 @@ That regression passes on the fork.
 ### Suggested Fix Direction
 
 - use real batch execution semantics
-- add a regression that includes semicolons inside SQL string literals
+- add regressions that cover:
+  - `INSERT ... VALUES('a;b')`
+  - `DEFAULT 'a;b'`
+  - `CREATE VIEW ... SELECT 'a;b'`
 
 ### Suggested Upstream Issue
 
@@ -539,6 +475,31 @@ The schema batch executor still manually splits SQL on `;` because `fsqlite` doe
 
 - `src/storage/schema.rs:207-219`
 
+## Reproduction
+
+Using the same execution shape upstream currently uses:
+
+```rust
+for stmt in sql.split(';') {
+    let trimmed = stmt.trim();
+    if !trimmed.is_empty() {
+        conn.execute(trimmed)?;
+    }
+}
+```
+
+The following valid SQL inputs fail:
+
+- `INSERT INTO demo(value) VALUES('a;b'); INSERT INTO demo(value) VALUES('c');`
+- `CREATE TABLE defaults_demo(value TEXT DEFAULT 'a;b');`
+- `CREATE VIEW demo_view AS SELECT 'a;b' AS value;`
+
+Observed failure shape:
+
+- the SQL is split inside the string literal
+- the fragments become invalid
+- `fsqlite` raises an unterminated-string parse error
+
 ## Risk
 
 This is structurally unsafe when SQL string literals contain semicolons.
@@ -547,6 +508,7 @@ This is structurally unsafe when SQL string literals contain semicolons.
 
 - schema execution uses real batch semantics
 - regression test covers semicolons inside SQL string literals
+- regressions include at least `INSERT`, `DEFAULT`, and `VIEW` cases
 ```
 
 ## Non-Issues From This Validation
@@ -581,11 +543,6 @@ Conclusion:
 
 A simple forced JSONL update followed by `sync --import-only` did update the issue and preserve comments in the tested case.
 
-Conclusion:
-
-- import correctness concerns are still real at the implementation level
-- but the issue should be framed as structural risk and technical debt, not as a reproduced end-user failure from this specific run
-
 ## Recommended Issue Filing Order
 
 If these are filed as separate upstream issues, the highest-signal order is:
@@ -593,8 +550,7 @@ If these are filed as separate upstream issues, the highest-signal order is:
 1. blocked-cache truncation beyond 50 levels
 2. failing concurrency suite and WAL corruption
 3. standard SQLite unreadable DB despite `doctor` reporting integrity `ok`
-4. import path still using `DELETE + INSERT`
-5. schema batch executor splitting on semicolons
+4. schema batch executor splitting on semicolons
 
 ## Suggested Issue Template
 
