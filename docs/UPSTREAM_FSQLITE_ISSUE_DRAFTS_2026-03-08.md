@@ -1,0 +1,549 @@
+# Upstream Issue Drafts
+
+Date: 2026-03-08
+
+Use this file after sharing the maintainer handoff:
+
+- handoff doc: `docs/UPSTREAM_FSQLITE_FINDINGS_2026-03-08.md`
+
+Recommended sequence:
+
+1. Share the maintainer handoff privately first so the maintainer has context.
+2. Open the issues below one at a time in priority order.
+3. Link each issue back to the handoff doc.
+
+Tested upstream revision:
+
+- repo: `https://github.com/Dicklesworthstone/beads_rust`
+- commit: `02a75ec0d4bd3fa61f07ef57ccae228afa93b262`
+- describe: `v0.1.23-3-g02a75ec`
+
+## Issue 1
+
+Title:
+
+`blocked_issues_cache propagation silently truncates after 50 parent-child levels`
+
+Body:
+
+```md
+## Summary
+
+Latest upstream `br` still silently truncates blocked-cache propagation after 50 parent-child levels.
+
+Tested on:
+- commit: `02a75ec0d4bd3fa61f07ef57ccae228afa93b262`
+- describe: `v0.1.23-3-g02a75ec`
+
+## Why This Matters
+
+This causes `br blocked` and `br ready` to return incorrect results for deeper dependency hierarchies. The behavior is not a hard failure; it returns a partial blocked cache and makes some descendants incorrectly appear ready.
+
+## Reproduction
+
+```bash
+git clone https://github.com/Dicklesworthstone/beads_rust.git /tmp/beads_rust_upstream
+cd /tmp/beads_rust_upstream
+cargo build --release --bin br
+
+BR=/tmp/beads_rust_upstream/target/release/br
+
+tmp=$(mktemp -d /tmp/br-deep-chain.XXXXXX)
+cd "$tmp"
+git init -q
+"$BR" init --prefix tst >/dev/null
+
+root=$("$BR" create "Root blocker" --json | jq -r .id)
+
+for i in $(seq 0 61); do
+  id=$("$BR" create "Deep $i" --json | jq -r .id)
+  eval "chain_$i=$id"
+done
+
+"$BR" dep add "$chain_0" "$root" --type blocks >/dev/null
+
+for i in $(seq 1 61); do
+  prev=$((i - 1))
+  eval "child=\$chain_$i"
+  eval "parent=\$chain_$prev"
+  "$BR" dep add "$child" "$parent" --type parent-child >/dev/null
+done
+
+"$BR" blocked --limit 0 --json | jq 'length'
+"$BR" ready --limit 0 --json | jq 'map(.id)'
+```
+
+## Expected
+
+- all 62 descendants appear in `br blocked`
+- only the root blocker appears in `br ready`
+
+## Actual
+
+- only 51 issues appeared blocked
+- multiple descendants incorrectly appeared in `br ready`
+
+## Normal Use Trigger
+
+This can happen in ordinary use when a project has a deep parent-child hierarchy, for example:
+
+- an epic with many nested subtasks
+- a planning tree where parent-child relationships are used across many levels
+- repeated use of `br create --parent ...` or `br dep add ... --type parent-child`
+
+The issue does not require concurrency. A single user in a single shell can trigger it by building a sufficiently deep hierarchy.
+
+## User-Visible Symptom
+
+- `br ready` shows deeply nested work as actionable when it is still transitively blocked
+- `br blocked` under-reports blocked descendants
+- teams/agents using `ready` as the source of truth can start work out of dependency order
+
+## Affected Commands
+
+- `br ready`
+- `br blocked`
+- `br dep add`
+- `br create --parent`
+- any command that triggers blocked-cache rebuild after dependency or status changes
+
+## Severity / Operational Impact
+
+This is a correctness bug in normal scheduling behavior. It is silent, which makes it worse operationally: the command succeeds and returns plausible-looking output, but the output is wrong for deep hierarchies.
+
+## Relevant Code
+
+- `src/storage/sqlite.rs:1619-1725`
+
+There is still a hardcoded `MAX_DEPTH = 50` in transitive blocked-cache propagation.
+
+## Suggested Fix Direction
+
+- remove the arbitrary depth cap
+- propagate until convergence instead
+- if a safety bound is needed, fail loudly rather than returning a partial blocked cache
+
+## Acceptance Criteria
+
+- no arbitrary depth truncation
+- blocked propagation converges to a fixed point
+- regression test covers >50 parent-child levels
+```
+
+## Issue 2
+
+Title:
+
+`latest br fails e2e_concurrency with missing writes and WAL corruption`
+
+Body:
+
+```md
+## Summary
+
+Latest upstream `br` fails `tests/e2e_concurrency.rs` under release-mode test execution.
+
+Tested on:
+- commit: `02a75ec0d4bd3fa61f07ef57ccae228afa93b262`
+- describe: `v0.1.23-3-g02a75ec`
+
+## Reproduction
+
+```bash
+git clone https://github.com/Dicklesworthstone/beads_rust.git /tmp/beads_rust_upstream
+cd /tmp/beads_rust_upstream
+cargo test --test e2e_concurrency --release -- --nocapture
+```
+
+## Actual
+
+The test target failed with these cases:
+
+- `e2e_concurrent_writes_succeed_with_retry`
+- `e2e_write_serialization`
+- `e2e_mixed_read_write_concurrency`
+
+Observed failure messages included:
+
+- `missing issue from thread 1`
+- `missing serialized issue 0`
+- `Database error: WAL file is corrupt: short read at frame 4: got 0, need 4120`
+
+## Expected
+
+- concurrent writes should either serialize cleanly or fail with a clean busy/lock error
+- mixed reads and writes should not corrupt WAL state
+- no created issue should disappear after a successful write path
+
+## Normal Use Trigger
+
+This looks reachable during normal multi-process or multi-agent use of `br`, especially when multiple shells or agents operate on the same repo concurrently.
+
+The most likely trigger patterns are:
+
+- two terminals both running `br create`
+- one agent doing `br update` / `br close` while another runs `br list` / `br ready`
+- overlapping write-heavy operations such as `create`, `update`, `close`, `reopen`, or `dep add`
+- any workflow where multiple tools point at the same `.beads/beads.db`
+
+This is particularly relevant for agent-heavy workflows where multiple automated actors operate on the same working copy.
+
+## User-Visible Symptom
+
+- a newly created or updated issue does not appear afterward
+- serialized write expectations fail and some writes appear to vanish
+- mixed read/write activity produces DB or WAL corruption
+- later reads return storage errors rather than clean lock/busy behavior
+
+## Affected Commands
+
+Likely affected write paths:
+
+- `br create`
+- `br update`
+- `br close`
+- `br reopen`
+- `br dep add`
+- `br dep remove`
+- potentially `br sync --import-only`
+
+Likely affected read paths during overlap:
+
+- `br list`
+- `br ready`
+- `br blocked`
+- `br show`
+- `br doctor`
+
+## Severity / Operational Impact
+
+This is high severity because it is not just a stale-read or retry problem. The observed failures include missing writes and WAL corruption, which directly affect data integrity and confidence in concurrent use.
+
+## Relevant Assertions
+
+- `tests/e2e_concurrency.rs:142-149`
+- `tests/e2e_concurrency.rs:401-404`
+- `tests/e2e_concurrency.rs:472-486`
+
+## Notes
+
+This looks like a runtime storage/WAL correctness problem, not just a flaky CLI-output test. The WAL corruption message is especially concerning.
+
+## Acceptance Criteria
+
+- all `e2e_concurrency` tests pass under `--release`
+- no WAL corruption under mixed read/write load
+- no silent loss of committed writes
+```
+
+## Issue 3
+
+Title:
+
+`br-created beads.db reports ok in doctor but is malformed to standard sqlite3`
+
+Body:
+
+```md
+## Summary
+
+A `.beads/beads.db` created by latest upstream `br` is not readable by standard SQLite, even though `br doctor` reports `sqlite.integrity_check = ok`.
+
+Tested on:
+- commit: `02a75ec0d4bd3fa61f07ef57ccae228afa93b262`
+- describe: `v0.1.23-3-g02a75ec`
+
+## Reproduction
+
+```bash
+git clone https://github.com/Dicklesworthstone/beads_rust.git /tmp/beads_rust_upstream
+cd /tmp/beads_rust_upstream
+cargo build --release --bin br
+
+BR=/tmp/beads_rust_upstream/target/release/br
+
+tmp=$(mktemp -d /tmp/br-sqlite-compat.XXXXXX)
+cd "$tmp"
+git init -q
+"$BR" init --prefix tst >/dev/null
+"$BR" create "Probe" --json >/dev/null
+"$BR" doctor --json | jq '.checks[] | select(.name == "sqlite.integrity_check")'
+
+python3 - <<'PY'
+import glob, sqlite3
+db = glob.glob('.beads/*.db')[0]
+conn = sqlite3.connect(db)
+print(conn.execute('select id, title from issues').fetchall())
+print(conn.execute('pragma integrity_check').fetchall())
+conn.close()
+PY
+```
+
+## Actual
+
+- `br doctor` reported `sqlite.integrity_check = ok`
+- Python `sqlite3` raised `DatabaseError('database disk image is malformed')`
+
+## Expected
+
+- a DB created by `br` should be readable by standard SQLite tooling
+- internal integrity reporting and standard SQLite should agree
+
+## Normal Use Trigger
+
+This is not a special edge-case workflow. It can arise in normal use as soon as a user:
+
+- runs `br init`
+- creates one or more issues
+- later inspects `.beads/beads.db` with standard SQLite tooling
+
+This matters anywhere the project expects interoperability with:
+
+- `sqlite3`
+- Python `sqlite3`
+- external SQLite inspection tools
+- third-party automation expecting standard SQLite semantics
+
+## User-Visible Symptom
+
+- external SQLite tools fail to open the DB
+- scripts using standard SQLite bindings cannot inspect or validate `.beads/beads.db`
+- users see a mismatch between `br doctor` and external tooling
+
+## Affected Commands
+
+Commands that create or mutate the DB are effectively implicated:
+
+- `br init`
+- `br create`
+- `br update`
+- `br close`
+- `br reopen`
+- `br dep add`
+- `br sync`
+
+The visible symptom often appears when using tools outside `br`, not necessarily while running `br` itself.
+
+## Severity / Operational Impact
+
+This is high severity from an interoperability and trust standpoint. Even if `br` itself can continue using the DB, users cannot rely on ordinary SQLite tooling to inspect or validate it.
+
+## Notes
+
+The database file still begins with an `SQLite format 3` header, which makes the mismatch more concerning.
+
+## Acceptance Criteria
+
+- a DB created by `br` can be opened by standard SQLite tooling
+- trivial `SELECT` queries work
+- `PRAGMA integrity_check` returns `ok`
+```
+
+## Issue 4
+
+Title:
+
+`import path still uses DELETE + INSERT instead of a true keyed upsert`
+
+Body:
+
+```md
+## Summary
+
+`upsert_issue_for_import` still performs `DELETE + INSERT` because of `fsqlite` limitations.
+
+## Relevant Code
+
+- `src/storage/sqlite.rs:4290-4298`
+
+The current code explicitly documents that this is a workaround for `fsqlite` uniqueness behavior.
+
+## Why This Matters
+
+- import/sync is a critical path
+- delete/reinsert semantics are weaker than a true keyed upsert
+- this increases correctness risk and makes the import path harder to reason about
+
+## Current Validation Result
+
+A simple forced JSONL import round-trip did succeed in the tested case, so this issue is being filed as structural correctness risk / technical debt rather than as a newly reproduced end-user breakage.
+
+## Normal Use Trigger
+
+This path is triggered by normal sync/import usage:
+
+- `br sync --import-only`
+- `br sync --merge`
+- any workflow that imports updated issue rows from JSONL back into the DB
+
+It becomes more important when imported issues already have related rows such as:
+
+- events
+- comments
+- labels
+- dependency rows
+
+## User-Visible Symptom
+
+In the simple tested case there was no visible breakage, but the underlying risk is:
+
+- imported rows are implemented via delete/reinsert semantics instead of true row updates
+- related-row preservation becomes harder to reason about
+- edge cases may show up around audit/history preservation or row identity assumptions
+
+## Affected Commands
+
+- `br sync --import-only`
+- `br sync --merge`
+- any import path that calls `upsert_issue_for_import`
+
+## Severity / Operational Impact
+
+This is medium severity as currently framed. It is an implementation-level correctness risk in a critical path, but this validation did not produce a simple end-user failure case comparable to the concurrency or blocked-cache findings.
+
+## Suggested Fix Direction
+
+- replace `DELETE + INSERT` with keyed upsert on `issues(id)`
+- add a regression that proves related rows are preserved across import updates
+
+## Acceptance Criteria
+
+- import path uses keyed upsert on `issues(id)`
+- related rows are preserved across import upsert
+- a regression test covers that preservation
+```
+
+## Issue 5
+
+Title:
+
+`schema batch executor still splits SQL on semicolons due to fsqlite limitation`
+
+Body:
+
+```md
+## Summary
+
+The schema batch executor still manually splits SQL on `;` because `fsqlite` does not support batch execution.
+
+Tested on:
+- commit: `02a75ec0d4bd3fa61f07ef57ccae228afa93b262`
+- describe: `v0.1.23-3-g02a75ec`
+
+## Reproduction
+
+This was validated as a structural risk in upstream code rather than as a fresh end-user CLI failure.
+
+To inspect the current implementation:
+
+```bash
+git clone https://github.com/Dicklesworthstone/beads_rust.git /tmp/beads_rust_upstream
+cd /tmp/beads_rust_upstream
+sed -n '207,219p' src/storage/schema.rs
+```
+
+To demonstrate the failure shape that this implementation can cause, the following minimal Rust test case exercises the same semicolon-splitting hazard:
+
+```rust
+let sql = "INSERT INTO demo(value) VALUES('a;b'); INSERT INTO demo(value) VALUES('c');";
+for stmt in sql.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+    println!("{stmt}");
+}
+```
+
+The first statement is incorrectly split in the middle of the string literal. Any schema or migration path that relies on the same splitting strategy is vulnerable to this class of bug.
+
+## Relevant Code
+
+- `src/storage/schema.rs:207-219`
+
+## Why This Matters
+
+Manual semicolon splitting is structurally unsafe when SQL string literals contain semicolons.
+
+## Expected
+
+- schema and migration SQL should be executed using real batch semantics
+- semicolons inside SQL string literals should not change statement boundaries
+- schema application should be atomic at the statement-batch level the backend supports
+
+## Actual
+
+- upstream currently tokenizes schema SQL by splitting on raw `;`
+- this is only safe for a restricted subset of SQL text
+- correctness depends on schema authors never introducing semicolons inside string literals or other edge cases that a real SQL parser would handle
+
+## Current Validation Result
+
+This was not reproduced as an active CLI failure in this pass, but it remains a fragile implementation point tied directly to the current storage backend limitations.
+
+## Normal Use Trigger
+
+This path is most likely to matter during:
+
+- schema initialization
+- migration execution
+- any future schema change that introduces SQL string literals containing semicolons
+- any maintenance work where multiple SQL statements are authored as a single batch and assumed to be parsed correctly by the backend
+
+It is not primarily a day-to-day end-user command issue. It is a maintenance and migration safety issue.
+
+## User-Visible Symptom
+
+If this fails in practice, symptoms would likely appear as:
+
+- broken init or migration behavior
+- unexpected SQL parse failures
+- partial schema application
+- environment-specific failures where one schema edit works in a simplified test but breaks in a real migration batch
+
+This validation did not reproduce a current CLI failure, so this should be treated as fragile technical debt rather than a confirmed user-facing regression.
+
+## Affected Commands
+
+- `br init`
+- first-run repository setup on a clean checkout
+- any future command path that invokes schema creation or migration
+
+More indirectly affected surfaces:
+
+- any command executed immediately after a failed or partially applied migration
+- CI or installer flows that bootstrap a fresh repo and expect schema creation to be robust
+
+## Severity / Operational Impact
+
+This is medium severity maintenance debt. It is less urgent than the concurrency and blocked-cache issues, but it is still a brittle implementation point worth removing.
+
+The risk is concentrated around future change velocity: it makes schema evolution less safe, increases the chance of subtle migration regressions, and leaves correctness dependent on a text-splitting workaround rather than SQL execution semantics.
+
+## Suggested Fix Direction
+
+- use real batch execution semantics
+- add a regression that includes semicolons inside SQL string literals
+- if `fsqlite` cannot support this safely, isolate the limitation clearly or replace the execution path rather than relying on raw string splitting
+
+## Acceptance Criteria
+
+- schema execution no longer depends on manual semicolon splitting
+- semicolons inside SQL string literals are handled correctly
+- regression coverage exists for that case
+```
+
+## Suggested Cover Note
+
+If you want to send a short DM or Discord note before opening issues, this is a clean version:
+
+```md
+I ran a focused validation pass against latest upstream `br` because I wanted to separate historical `fsqlite` concerns from current reproducible behavior.
+
+I wrote up the findings here:
+- maintainer handoff: `docs/UPSTREAM_FSQLITE_FINDINGS_2026-03-08.md`
+
+The highest-signal current issues are:
+- blocked-cache truncation beyond 50 parent-child levels
+- failing concurrency tests, including WAL corruption
+- upstream-created `.beads/beads.db` not being readable by standard SQLite despite `doctor` reporting integrity `ok`
+
+I also prepared individual issue drafts so they can be opened cleanly if useful:
+- `docs/UPSTREAM_FSQLITE_ISSUE_DRAFTS_2026-03-08.md`
+```

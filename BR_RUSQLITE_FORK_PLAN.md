@@ -142,7 +142,7 @@ The following changes are already implemented in the fork branch
 - Promoted the local fork binary name from `br` to `bx` at the Cargo binary and
   Clap command layer
 - Re-pointed repository metadata, installer defaults, and release/version check
-  endpoints to `stefanraath3/beads_rust`
+  endpoints to `rustytroy/beads_rust`
 - Updated the built-in AGENTS blurb and local agent-facing documentation so
   future agents are instructed to use `bx` and are told why the fork exists
 - Updated integration, conformance, and installer harnesses to discover and
@@ -249,7 +249,7 @@ The fork is now productized for developer-path installs.
 Validated local install paths:
 
 - `cargo install --path . --root ~/.local --force --bin bx`
-- `cargo install --git https://github.com/stefanraath3/beads_rust.git --branch main --force --bin bx`
+- `cargo install --git https://github.com/rustytroy/beads_rust.git --branch main --force --bin bx`
 
 That is sufficient for day-to-day dogfooding and development use.
 
