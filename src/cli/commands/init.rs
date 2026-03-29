@@ -269,13 +269,13 @@ fn render_init_rich(
 
     content.append("\n");
     content.append_styled("Next steps:\n", theme.emphasis.clone());
-    content.append("  br create \"My first issue\"\n");
-    content.append("  br list\n");
+    content.append("  bx create \"My first issue\"\n");
+    content.append("  bx list\n");
 
     if prefix.is_none() {
         content.append("\n");
         content.append_styled(
-            "Tip: Set a custom prefix with `br init --prefix <name>`\n",
+            "Tip: Set a custom prefix with `bx init --prefix <name>`\n",
             theme.dimmed.clone(),
         );
     }

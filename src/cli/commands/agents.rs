@@ -13,27 +13,25 @@ use std::path::{Path, PathBuf};
 
 /// Current version of the agent instructions blurb.
 /// Increment this when making breaking changes to the blurb format.
-pub const BLURB_VERSION: u8 = 2;
+pub const BLURB_VERSION: u8 = 1;
 
 /// Start marker for the blurb (includes version).
-pub const BLURB_START_MARKER: &str = "<!-- br-agent-instructions-v2 -->";
+pub const BLURB_START_MARKER: &str = "<!-- bx-agent-instructions-v1 -->";
 
 /// End marker for the blurb.
-pub const BLURB_END_MARKER: &str = "<!-- end-br-agent-instructions -->";
+pub const BLURB_END_MARKER: &str = "<!-- end-agent-mail-instructions -->";
 
 /// Supported agent file names in order of preference.
 pub const SUPPORTED_AGENT_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "agents.md", "claude.md"];
 
 /// The agent instructions blurb to append to AGENTS.md files.
-pub const AGENT_BLURB: &str = r#"<!-- br-agent-instructions-v2 -->
+pub const AGENT_BLURB: &str = r#"<!-- bx-agent-instructions-v1 -->
 
 ---
 
 ## Beads Workflow Integration
 
-This project uses the local [beads_rust fork](https://github.com/stefanraath3/beads_rust) (`bx`) for issue tracking. Issues are stored in `.beads/` and tracked in git.
-
-This fork standardizes on `bx` because it carries the `rusqlite` storage backend that replaced `fsqlite` / `frankensqlite` after real failures, including `cursor must be on a leaf to delete`.
+This project uses the local `bx` fork of `beads_rust` for issue tracking. `bx` is the `rusqlite`-backed replacement for `br` in this repo because the upstream `br` / `frankensqlite` path has been corrupting the local SQLite database. Issues are stored in `.beads/` and tracked in git.
 
 ### Essential Commands
 
@@ -92,7 +90,173 @@ git push                # Push to remote
 - Use descriptive titles and set appropriate priority/type
 - Always sync before ending session
 
-<!-- end-br-agent-instructions -->"#;
+### Agent-First Design
+
+Every command supports --json for AI coding agents:
+
+bx list --json | jq '.[] | select(.priority <= 1)'
+bx ready --json # Structured output for agents
+bx show <issue-id> --json
+
+<!-- end-bx-agent-instructions -->
+
+<!-- bv-agent-instructions-v1 -->
+
+---
+
+## Beads Viewer Integration
+
+This project uses [beads_viewer](https://github.com/Dicklesworthstone/beads_viewer) as a graph-aware planning and triage layer on top of the local `bx` fork. Use `bv` to decide what to work on next; use `bx` to claim, update, close, and sync work.
+
+### Essential Commands
+
+```bash
+# Avoid bare `bv` in agent sessions because it launches the interactive TUI.
+
+# Use these for agent triage and sequencing
+bv --robot-next       # Single best actionable issue right now
+bv --robot-triage     # Structured dependency-aware recommendations
+bv --robot-plan       # Parallel tracks and unblock sequencing
+bv --robot-insights   # Deeper graph analysis when needed
+
+# Use `bx` for state changes and persistence
+bx ready              # Show issues ready to work (no blockers)
+bx show <id>          # Full issue details with dependencies
+bx update <id> --status=in_progress
+bx close <id> --reason="Completed"
+bx sync --flush-only  # Export DB to JSONL
+```
+
+### Workflow Pattern
+
+1. **Triage**: Run `bv --robot-next` or `bv --robot-triage` to identify the best actionable work
+2. **Verify**: Check `bx ready` / `bx show <id>` before claiming
+3. **Claim**: Use `bx update <id> --status=in_progress`
+4. **Work**: Implement the task
+5. **Complete**: Use `bx close <id>`
+6. **Sync**: Always run `bx sync --flush-only` at session end
+
+### Key Concepts
+
+- **Separation of concerns**: `bv` analyzes the graph; `bx` mutates issue state
+- **Dependencies**: Issues can block other issues. `bx ready` shows only unblocked work; `bv` helps rank which ready issue is most valuable
+- **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers, not words)
+- **Types**: task, bug, feature, epic, question, docs
+- **Blocking**: `bx dep add <issue> <depends-on>` to add dependencies
+
+### Session Protocol
+
+**Before ending any session, run this checklist:**
+
+```bash
+git status              # Check what changed
+git add <files>         # Stage code changes
+bx sync --flush-only    # Export beads changes to JSONL
+git commit -m "..."     # Commit code and beads export
+git push                # Push to remote
+```
+
+### Best Practices
+
+- Start with `bv --robot-next` for single-agent work and `bv --robot-plan` for multi-agent splitting
+- Treat `bv` recommendations as advisory and verify with `bx` before claiming
+- Update status as you work (in_progress → closed)
+- Create new issues with `bx create` when you discover tasks
+- Use descriptive titles and set appropriate priority/type
+- Always `bx sync --flush-only` before ending session
+
+Key bv commands for agent workflow:
+
+┌─────────────────────────────────────────┬────────────────────────────────────────────────────────┐  
+ │ Command │ Use when │  
+ ├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤  
+ │ bv --robot-next │ Pick the single best task to work on now │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-triage │ Full triage with recommendations, quick wins, blockers │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-plan │ Parallel execution tracks for multi-agent splitting │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-priority │ Detect priority misalignments │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-insights │ Deep graph analysis (PageRank, critical path, cycles) │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-alerts │ Stale issues, blocking cascades, priority mismatches │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-suggest │ Hygiene: duplicates, missing deps, label suggestions │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-forecast <id|all> │ ETA predictions with dependency-aware scheduling │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-diff --diff-since <ref> │ Changes since a git ref │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-label-health │ Per-label health, velocity, staleness │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-label-attention │ Attention-ranked labels by impact │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ bv --robot-graph --graph-format=mermaid │ Export dependency graph │
+├─────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ --format toon │ Token-optimized output to save context │
+└─────────────────────────────────────────┴────────────────────────────────────────────
+
+<!-- end-bv-agent-instructions -->
+
+<!-- begin-agent-mail-instructions -->
+
+---
+
+## MCP Agent Mail: Coordination for Multi-Agent Workflows
+
+This project uses [MCP Agent Mail](https://github.com/Dicklesworthstone/mcp_agent_mail) for multi-agent coordination. The server runs on `http://127.0.0.1:8765/api/`.
+
+### What It Does
+
+- Gives each agent a memorable identity (e.g., GreenCastle)
+- Provides async messaging between agents (inbox/outbox)
+- Advisory file reservations (leases) to prevent agents from editing the same files
+- Searchable message threads keyed to bead IDs
+
+### Session Startup
+
+1. Prefer `macro_start_session` with `human_key="/abs/path/to/current/repo"` (use this repo's absolute path), `program="<current-runtime>"`, `model="<current-model>"`, and `task_description="<current-bead-or-focus>"`
+2. If `macro_start_session` is unavailable, call `ensure_project`, then `register_agent`, then `fetch_inbox`
+3. Check who else is active: call `list_contacts` MCP tool
+4. Reserve your files before editing: call `file_reservation_paths` with your file patterns, `exclusive=true`, `ttl_seconds=3600`, and your bead ID as `reason`
+5. Announce what you're working on: call `send_message` with `thread_id=<bead-id>` and include the reserved file paths in the message body
+
+### During Work
+
+- Call `fetch_inbox` before touching any newly shared or high-conflict file, before claiming a new bead, after major scope changes, and periodically during long-running work
+- If your file scope expands, reserve the new paths before editing them and announce the scope change in the bead thread
+- If you need a file another agent has reserved, send them a message first and do not silently edit through the conflict in shared-repo mode
+- Acknowledge important messages with `acknowledge_message`
+
+### On Completion
+
+- Release file reservations: call `release_file_reservations`
+- Announce completion: call `send_message` with thread_id=<bead-id>, subject="[<bead-id>] Completed"
+- Then follow the standard bx close + sync workflow
+
+### Macros (Convenient Shortcuts)
+
+- `macro_start_session` — Register + check inbox + list contacts in one call
+- `macro_file_reservation_cycle` — Reserve, work, release in a structured flow
+- `macro_prepare_thread` — Set up a message thread for a bead
+
+### Common Pitfalls
+
+- `from_agent not registered`: prefer `macro_start_session`, or call `ensure_project` before `register_agent`; plain `register_agent` assumes the project already exists
+- `FILE_RESERVATION_CONFLICT`: another agent has the file; coordinate, wait, or choose different work. Do not silently continue in shared-repo mode
+- Use bead IDs as `thread_id` to keep mail threads aligned with beads
+
+### Integrating Beads with Agent Mail
+
+- **Beads owns task state** (priority, status, dependencies)
+- **Agent Mail owns coordination** (who's editing what, async messaging)
+- **Shared identifier**: Use the actual issue ID for the current repo (e.g., `<issue-id>`) as both the beads issue ID and the Agent Mail `thread_id`
+- **File reservation reason**: Always include bead ID in the `reason` field
+- **No soft claims**: Only announce a bead after it is already launcher-assigned or claimed in `bx`, and after your initial file reservations are in place
+- **One active bead per agent**: Do not claim a second bead until the current one is closed or explicitly handed off
+
+<!-- end-agent-mail-instructions -->"#;
 
 /// Result of detecting an agent config file.
 #[derive(Debug, Clone, Default)]
@@ -105,6 +269,8 @@ pub struct AgentFileDetection {
     pub has_blurb: bool,
     /// Whether the file has the legacy (bv) blurb format.
     pub has_legacy_blurb: bool,
+    /// Whether the file contains the current managed blurb format.
+    pub has_current_blurb: bool,
     /// Version of the blurb found (0 if none or legacy).
     pub blurb_version: u8,
     /// File content (if read).
@@ -130,21 +296,44 @@ impl AgentFileDetection {
         if self.has_legacy_blurb {
             return true;
         }
-        self.has_blurb && self.blurb_version < BLURB_VERSION
+        self.has_blurb && !self.has_current_blurb
     }
 }
 
-/// Check if content contains the br agent blurb.
+fn contains_current_blurb(content: &str) -> bool {
+    content.contains(BLURB_START_MARKER)
+}
+
+fn contains_previous_br_blurb(content: &str) -> bool {
+    content.contains("<!-- br-agent-instructions-v")
+}
+
+fn describe_detected_blurb(detection: &AgentFileDetection) -> String {
+    if detection.has_legacy_blurb {
+        "bv (legacy)".to_string()
+    } else if detection
+        .content
+        .as_deref()
+        .is_some_and(contains_previous_br_blurb)
+    {
+        format!("br v{}", detection.blurb_version)
+    } else {
+        format!("v{}", detection.blurb_version)
+    }
+}
+
+/// Check if content contains any managed agent blurb.
 #[must_use]
 pub fn contains_blurb(content: &str) -> bool {
-    content.contains("<!-- br-agent-instructions-v")
+    contains_current_blurb(content) || contains_previous_br_blurb(content)
 }
 
 /// Check if content contains the legacy bv blurb.
 #[must_use]
 pub fn contains_legacy_blurb(content: &str) -> bool {
-    // Check for bv blurb markers
     content.contains("<!-- bv-agent-instructions-v")
+        && !contains_current_blurb(content)
+        && !contains_previous_br_blurb(content)
 }
 
 /// Check if content contains any blurb (br or bv).
@@ -157,7 +346,7 @@ pub fn contains_any_blurb(content: &str) -> bool {
 #[must_use]
 #[allow(clippy::missing_panics_doc)] // Regex is static and valid
 pub fn get_blurb_version(content: &str) -> u8 {
-    let re = Regex::new(r"<!-- br-agent-instructions-v(\d+) -->").unwrap();
+    let re = Regex::new(r"<!-- (?:bx|br)-agent-instructions-v(\d+) -->").unwrap();
     if let Some(caps) = re.captures(content)
         && let Some(m) = caps.get(1)
     {
@@ -209,14 +398,16 @@ fn check_agent_file(file_path: &Path, file_type: &str) -> Option<AgentFileDetect
         });
     };
 
+    let has_current_blurb = contains_current_blurb(&content);
     let has_legacy = contains_legacy_blurb(&content);
-    let has_br_blurb = contains_blurb(&content);
+    let has_managed_blurb = contains_blurb(&content);
 
     Some(AgentFileDetection {
         file_path: Some(file_path.to_path_buf()),
         file_type: Some(file_type.to_string()),
-        has_blurb: has_br_blurb || has_legacy,
+        has_blurb: has_managed_blurb || has_legacy,
         has_legacy_blurb: has_legacy,
+        has_current_blurb,
         blurb_version: get_blurb_version(&content),
         content: Some(content),
     })
@@ -261,15 +452,18 @@ pub fn append_blurb(content: &str) -> String {
 /// Remove an existing br blurb from content.
 #[must_use]
 pub fn remove_blurb(content: &str) -> String {
-    let start_marker = "<!-- br-agent-instructions-v";
-    let Some(start_idx) = content.find(start_marker) else {
+    let (start_idx, end_marker) = if let Some(idx) = content.find("<!-- bx-agent-instructions-v") {
+        (idx, BLURB_END_MARKER)
+    } else if let Some(idx) = content.find("<!-- br-agent-instructions-v") {
+        (idx, "<!-- end-br-agent-instructions -->")
+    } else {
         return content.to_string();
     };
 
-    let Some(end_pos) = content.find(BLURB_END_MARKER) else {
+    let Some(end_pos) = content.find(end_marker) else {
         return content.to_string();
     };
-    let end_idx = end_pos + BLURB_END_MARKER.len();
+    let end_idx = end_pos + end_marker.len();
 
     // Trim whitespace around the removed section
     let mut start = start_idx;
@@ -453,11 +647,7 @@ fn execute_dry_run_inferred(
     if detection.needs_upgrade() {
         // Would update existing blurb
         let file_path = detection.file_path.as_ref().unwrap();
-        let from_version = if detection.has_legacy_blurb {
-            "bv (legacy)".to_string()
-        } else {
-            format!("v{}", detection.blurb_version)
-        };
+        let from_version = describe_detected_blurb(detection);
         if is_rich {
             render_dry_run_update_rich(file_path, &from_version, ctx);
         } else {
@@ -570,7 +760,7 @@ fn execute_check(
             work_dir.display()
         );
         println!("\nTo add beads workflow instructions:");
-        println!("  br agents --add");
+        println!("  bx agents --add");
         return Ok(());
     }
 
@@ -580,24 +770,24 @@ fn execute_check(
     println!("Found: {} at {}", file_type, file_path.display());
 
     if detection.has_legacy_blurb {
-        println!("\nStatus: Contains legacy bv blurb (needs upgrade to br format)");
+        println!("\nStatus: Contains legacy bv blurb (needs upgrade to bx format)");
         println!("\nTo upgrade:");
-        println!("  br agents --update");
+        println!("  bx agents --update");
     } else if detection.has_blurb {
-        if detection.blurb_version < BLURB_VERSION {
+        if detection.needs_upgrade() {
             println!(
-                "\nStatus: Contains br blurb v{} (current: v{})",
+                "\nStatus: Contains older managed blurb v{} (current: v{})",
                 detection.blurb_version, BLURB_VERSION
             );
             println!("\nTo update:");
-            println!("  br agents --update");
+            println!("  bx agents --update");
         } else {
-            println!("\nStatus: Contains current br blurb v{BLURB_VERSION}");
+            println!("\nStatus: Contains current bx blurb v{BLURB_VERSION}");
         }
     } else {
         println!("\nStatus: No beads workflow instructions found");
         println!("\nTo add:");
-        println!("  br agents --add");
+        println!("  bx agents --add");
     }
 
     Ok(())
@@ -810,11 +1000,7 @@ fn execute_update(
     let content = detection.content.as_ref().unwrap();
     let new_content = update_blurb(content);
 
-    let from_version = if detection.has_legacy_blurb {
-        "bv (legacy)".to_string()
-    } else {
-        format!("v{}", detection.blurb_version)
-    };
+    let from_version = describe_detected_blurb(detection);
 
     if dry_run {
         if matches!(ctx.mode(), OutputMode::Rich) {
@@ -893,27 +1079,27 @@ fn render_check_rich(detection: &AgentFileDetection, work_dir: &Path, ctx: &Outp
 
         if detection.has_legacy_blurb {
             content.append_styled("\u{26A0} ", theme.warning.clone());
-            content.append("Contains legacy bv blurb (needs upgrade to br format)\n\n");
+            content.append("Contains legacy bv blurb (needs upgrade to bx format)\n\n");
             content.append_styled("To upgrade:\n", theme.dimmed.clone());
-            content.append_styled("  br agents --update", theme.accent.clone());
+            content.append_styled("  bx agents --update", theme.accent.clone());
         } else if detection.has_blurb {
-            if detection.blurb_version < BLURB_VERSION {
+            if detection.needs_upgrade() {
                 content.append_styled("\u{26A0} ", theme.warning.clone());
                 content.append(&format!(
-                    "Contains br blurb v{} (current: v{})\n\n",
+                    "Contains older managed blurb v{} (current: v{})\n\n",
                     detection.blurb_version, BLURB_VERSION
                 ));
                 content.append_styled("To update:\n", theme.dimmed.clone());
-                content.append_styled("  br agents --update", theme.accent.clone());
+                content.append_styled("  bx agents --update", theme.accent.clone());
             } else {
                 content.append_styled("\u{2713} ", theme.success.clone());
-                content.append(&format!("Contains current br blurb v{BLURB_VERSION}"));
+                content.append(&format!("Contains current bx blurb v{BLURB_VERSION}"));
             }
         } else {
             content.append_styled("\u{2717} ", theme.warning.clone());
             content.append("No beads workflow instructions found\n\n");
             content.append_styled("To add:\n", theme.dimmed.clone());
-            content.append_styled("  br agents --add", theme.accent.clone());
+            content.append_styled("  bx agents --add", theme.accent.clone());
         }
     } else {
         content.append_styled("\u{2717} ", theme.warning.clone());
@@ -924,7 +1110,7 @@ fn render_check_rich(detection: &AgentFileDetection, work_dir: &Path, ctx: &Outp
             "To add beads workflow instructions:\n",
             theme.dimmed.clone(),
         );
-        content.append_styled("  br agents --add", theme.accent.clone());
+        content.append_styled("  bx agents --add", theme.accent.clone());
     }
 
     let panel = Panel::from_rich_text(&content, width)
@@ -1097,7 +1283,7 @@ mod tests {
 
     #[test]
     fn test_contains_blurb() {
-        let content = "Some text\n<!-- br-agent-instructions-v2 -->\nblurb\n<!-- end-br-agent-instructions -->";
+        let content = "Some text\n<!-- bx-agent-instructions-v1 -->\nblurb\n<!-- end-agent-mail-instructions -->";
         assert!(contains_blurb(content));
         assert!(!contains_legacy_blurb(content));
     }
@@ -1112,7 +1298,7 @@ mod tests {
 
     #[test]
     fn test_get_blurb_version() {
-        assert_eq!(get_blurb_version("<!-- br-agent-instructions-v2 -->"), 2);
+        assert_eq!(get_blurb_version("<!-- bx-agent-instructions-v1 -->"), 1);
         assert_eq!(get_blurb_version("<!-- br-agent-instructions-v2 -->"), 2);
         assert_eq!(get_blurb_version("no marker"), 0);
     }
@@ -1145,7 +1331,8 @@ mod tests {
         let detection = detect_agent_file(temp_dir.path());
         assert!(detection.found());
         assert!(detection.has_blurb);
-        assert_eq!(detection.blurb_version, 2);
+        assert!(detection.has_current_blurb);
+        assert_eq!(detection.blurb_version, 1);
         assert!(!detection.needs_blurb());
         assert!(!detection.needs_upgrade());
     }
@@ -1174,7 +1361,20 @@ mod tests {
         let legacy_content = "# Agents\n\n<!-- bv-agent-instructions-v1 -->\nold\n<!-- end-bv-agent-instructions -->\n";
         let result = update_blurb(legacy_content);
         assert!(!result.contains("bv-agent-instructions"));
-        assert!(result.contains("br-agent-instructions-v2"));
+        assert!(result.contains("bx-agent-instructions-v1"));
+    }
+
+    #[test]
+    fn test_current_blurb_does_not_look_like_legacy_bv() {
+        assert!(!contains_legacy_blurb(AGENT_BLURB));
+    }
+
+    #[test]
+    fn test_update_blurb_from_legacy_br_blurb() {
+        let legacy_content = "# Agents\n\n<!-- br-agent-instructions-v2 -->\nold\n<!-- end-br-agent-instructions -->\n";
+        let result = update_blurb(legacy_content);
+        assert!(!result.contains("br-agent-instructions-v2"));
+        assert!(result.contains("bx-agent-instructions-v1"));
     }
 
     #[test]
